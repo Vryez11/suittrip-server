@@ -1,0 +1,120 @@
+/**
+ * Express 애플리케이션 설정
+ */
+
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { testConnection } from './config/database.js';
+
+// 환경변수 로드
+dotenv.config();
+
+// Express 앱 생성
+const app = express();
+
+// ============================================================================
+// 미들웨어 설정
+// ============================================================================
+
+// CORS 설정
+const corsOptions = {
+  origin: process.env.CORS_ORIGIN?.split(',') || '*',
+  credentials: process.env.CORS_CREDENTIALS === 'true',
+  optionsSuccessStatus: 200,
+};
+app.use(cors(corsOptions));
+
+// Body 파싱 미들웨어
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// 요청 로깅 미들웨어 (개발 환경)
+if (process.env.NODE_ENV !== 'test') {
+  app.use((req, res, next) => {
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] ${req.method} ${req.path}`);
+    next();
+  });
+}
+
+// ============================================================================
+// 헬스체크 엔드포인트
+// ============================================================================
+
+app.get('/health', async (req, res) => {
+  try {
+    const dbConnected = await testConnection();
+
+    res.status(200).json({
+      success: true,
+      message: 'Server is running',
+      timestamp: new Date().toISOString(),
+      database: dbConnected ? 'connected' : 'disconnected',
+      environment: process.env.NODE_ENV || 'development',
+      version: '1.0.0',
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Server is running but database connection failed',
+      timestamp: new Date().toISOString(),
+      database: 'disconnected',
+      environment: process.env.NODE_ENV || 'development',
+      version: '1.0.0',
+    });
+  }
+});
+
+// ============================================================================
+// API 라우트 (추후 추가)
+// ============================================================================
+
+// TODO: API 라우트 연결
+// app.use('/api/store/auth', authRoutes);
+// app.use('/api/store', storeRoutes);
+// app.use('/api/reservations', reservationRoutes);
+// ...
+
+// ============================================================================
+// 404 에러 핸들러
+// ============================================================================
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    error: {
+      code: 'ROUTE_NOT_FOUND',
+      message: `경로를 찾을 수 없습니다: ${req.method} ${req.path}`,
+      timestamp: new Date().toISOString(),
+    },
+  });
+});
+
+// ============================================================================
+// 전역 에러 핸들러
+// ============================================================================
+
+app.use((err, req, res, next) => {
+  console.error('서버 에러:', err);
+
+  // 에러 상태 코드 결정
+  const statusCode = err.statusCode || err.status || 500;
+
+  // 에러 응답
+  res.status(statusCode).json({
+    success: false,
+    error: {
+      code: err.code || 'SERVER_ERROR',
+      message: err.message || '서버 내부 오류가 발생했습니다.',
+      ...(process.env.NODE_ENV === 'development' && { stack: err.stack }),
+      timestamp: new Date().toISOString(),
+    },
+  });
+});
+
+// ============================================================================
+// 앱 내보내기
+// ============================================================================
+
+export default app;
