@@ -49,6 +49,10 @@ temp/
 uploads/
 public/uploads/
 
+# 로그 파일
+logs/
+*.log
+
 # 데이터베이스
 *.db
 *.sqlite
