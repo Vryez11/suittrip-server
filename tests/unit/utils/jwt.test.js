@@ -162,14 +162,14 @@ describe('JWT Utility Tests', () => {
   });
 
   describe('보안 테스트', () => {
-    test('동일한 입력으로 생성된 토큰은 서로 달라야 함 (iat 때문)', () => {
+    test('동일한 입력으로 생성된 토큰은 서로 달라야 함 (iat 때문)', async () => {
       const token1 = generateAccessToken(testStoreId, testEmail);
 
-      // 약간의 지연
-      setTimeout(() => {
-        const token2 = generateAccessToken(testStoreId, testEmail);
-        expect(token1).not.toBe(token2);
-      }, 10);
+      // 1초 지연하여 확실히 다른 iat 보장
+      await new Promise(resolve => setTimeout(resolve, 1100));
+
+      const token2 = generateAccessToken(testStoreId, testEmail);
+      expect(token1).not.toBe(token2);
     });
 
     test('토큰에 민감한 정보가 포함되지 않아야 함', () => {

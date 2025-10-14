@@ -36,6 +36,13 @@ async function applySchema() {
     connection = await mysql.createConnection(config);
     console.log('✅ 데이터베이스 연결 성공');
 
+    // 데이터베이스 생성 및 선택
+    const dbName = process.env.DB_NAME || 'suittrip';
+    console.log(`📦 데이터베이스 생성 중: ${dbName}`);
+    await connection.query(`CREATE DATABASE IF NOT EXISTS ${dbName} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+    await connection.query(`USE ${dbName}`);
+    console.log(`✅ 데이터베이스 선택 완료: ${dbName}`);
+
     // 스키마 파일 읽기
     const schemaPath = path.join(__dirname, 'schema.sql');
     console.log(`📖 스키마 파일 읽는 중: ${schemaPath}`);
@@ -47,8 +54,6 @@ async function applySchema() {
     console.log('✅ 스키마 적용 완료!');
 
     // 생성된 테이블 확인
-    const dbName = process.env.DB_NAME || 'suittrip';
-    await connection.query(`USE ${dbName}`);
     const [tables] = await connection.query('SHOW TABLES');
 
     console.log('\n📊 생성된 테이블 목록:');

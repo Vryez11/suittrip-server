@@ -3,15 +3,8 @@
 -- ============================================================================
 -- 설명: 짐 보관소 관리 플랫폼 전체 스키마
 -- 생성일: 2025-01-14
--- 버전: 1.0.0
+-- 버전: 1.0.1
 -- ============================================================================
-
--- 데이터베이스 생성 (이미 존재하지 않는 경우)
-CREATE DATABASE IF NOT EXISTS suittrip
-CHARACTER SET utf8mb4
-COLLATE utf8mb4_unicode_ci;
-
-USE suittrip;
 
 -- ============================================================================
 -- 1. stores - 점포 기본 정보
@@ -422,13 +415,14 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 CREATE TABLE IF NOT EXISTS email_verifications (
   id INT AUTO_INCREMENT PRIMARY KEY COMMENT '인증 ID',
   email VARCHAR(255) NOT NULL COMMENT '이메일',
-  verification_code VARCHAR(10) NOT NULL COMMENT '인증 코드',
+  code VARCHAR(10) NOT NULL COMMENT '인증 코드',
   is_verified BOOLEAN DEFAULT FALSE COMMENT '인증 완료 여부',
   expires_at TIMESTAMP NOT NULL COMMENT '만료 시간',
+  attempt_count INT DEFAULT 0 COMMENT '시도 횟수',
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
 
   INDEX idx_email (email),
-  INDEX idx_code (verification_code),
+  INDEX idx_code (code),
   INDEX idx_expires_at (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='이메일 인증';
 

@@ -67,11 +67,15 @@ app.get('/health', async (req, res) => {
 });
 
 // ============================================================================
-// API 라우트 (추후 추가)
+// API 라우트
 // ============================================================================
 
-// TODO: API 라우트 연결
-// app.use('/api/store/auth', authRoutes);
+import authRoutes from './routes/authRoutes.js';
+
+// 인증 라우트
+app.use('/api/auth', authRoutes);
+
+// TODO: 추가 라우트 연결
 // app.use('/api/store', storeRoutes);
 // app.use('/api/reservations', reservationRoutes);
 // ...

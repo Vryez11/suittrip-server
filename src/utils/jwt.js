@@ -8,12 +8,12 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 // JWT 시크릿 키
-const ACCESS_TOKEN_SECRET = process.env.JWT_SECRET || 'your-secret-key';
-const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'your-refresh-secret-key';
+const ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_TOKEN_SECRET || 'your-secret-key';
+const REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_TOKEN_SECRET || 'your-refresh-secret-key';
 
 // 토큰 만료 시간
-const ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h'; // 1시간
-const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || '30d'; // 30일
+const ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_ACCESS_TOKEN_EXPIRES_IN || '1h'; // 1시간
+const REFRESH_TOKEN_EXPIRES_IN = process.env.JWT_REFRESH_TOKEN_EXPIRES_IN || '30d'; // 30일
 
 /**
  * Access Token 생성
