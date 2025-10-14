@@ -13,7 +13,9 @@
     "test:unit": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/unit",
     "test:integration": "node --experimental-vm-modules node_modules/jest/bin/jest.js tests/integration",
     "lint": "eslint src/**/*.js",
-    "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\""
+    "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\"",
+    "db:schema": "node database/apply-schema.js",
+    "db:reset": "node database/reset-database.js"
   },
   "repository": {
     "type": "git",
