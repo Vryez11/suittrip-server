@@ -2,9 +2,8 @@ export default {
   // 테스트 환경
   testEnvironment: 'node',
 
-  // ES Modules 지원
+  // ES Modules 지원 (package.json에 "type": "module"이 있으므로 제거)
   transform: {},
-  extensionsToTreatAsEsm: ['.js'],
 
   // 커버리지 설정
   collectCoverageFrom: [
