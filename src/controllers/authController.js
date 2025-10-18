@@ -11,8 +11,8 @@ import {
 } from '../utils/emailVerification.js';
 import { sendVerificationEmail } from '../config/email.js';
 import { query } from '../config/database.js';
-import { hashPassword } from '../utils/password.js';
-import { generateAccessToken, generateRefreshToken } from '../utils/jwt.js';
+import { hashPassword, comparePassword } from '../utils/password.js';
+import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/jwt.js';
 import { generateStoreId } from '../utils/generateId.js';
 
 /**
@@ -332,6 +332,266 @@ export const register = async (req, res) => {
     );
   } catch (err) {
     console.error('회원가입 중 에러:', err);
+    return res.status(500).json(
+      error('INTERNAL_ERROR', '서버 오류가 발생했습니다', {
+        message: err.message,
+      })
+    );
+  }
+};
+
+/**
+ * 로그인
+ * POST /api/auth/login
+ */
+export const login = async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    // 입력 검증
+    if (!email || !email.trim()) {
+      return res.status(400).json(
+        error('VALIDATION_ERROR', '이메일이 필요합니다', { field: 'email' })
+      );
+    }
+
+    if (!isValidEmail(email)) {
+      return res.status(400).json(
+        error('VALIDATION_ERROR', '올바른 이메일 형식이 아닙니다', {
+          field: 'email',
+        })
+      );
+    }
+
+    if (!password || !password.trim()) {
+      return res.status(400).json(
+        error('VALIDATION_ERROR', '비밀번호가 필요합니다', {
+          field: 'password',
+        })
+      );
+    }
+
+    // 1. 사용자 조회
+    const stores = await query(
+      `SELECT
+        id, email, password_hash, name, phone_number,
+        business_number, business_name, representative_name,
+        address, detail_address, latitude, longitude,
+        business_type, description, has_completed_setup,
+        created_at, updated_at
+      FROM stores
+      WHERE email = ?
+      LIMIT 1`,
+      [email]
+    );
+
+    if (!stores || stores.length === 0) {
+      return res.status(401).json(
+        error('AUTHENTICATION_FAILED', '이메일 또는 비밀번호가 일치하지 않습니다')
+      );
+    }
+
+    const store = stores[0];
+
+    // 2. 비밀번호 확인
+    const isPasswordValid = await comparePassword(password, store.password_hash);
+
+    if (!isPasswordValid) {
+      return res.status(401).json(
+        error('AUTHENTICATION_FAILED', '이메일 또는 비밀번호가 일치하지 않습니다')
+      );
+    }
+
+    // 3. JWT 토큰 발급
+    const accessToken = generateAccessToken(store.id, store.email);
+    const refreshToken = generateRefreshToken(store.id, store.email);
+
+    // 4. Refresh Token 저장
+    const expiresAt = new Date();
+    expiresAt.setDate(expiresAt.getDate() + 30); // 30일 후
+
+    await query(
+      `INSERT INTO refresh_tokens (
+        store_id, token, expires_at, created_at
+      ) VALUES (?, ?, ?, NOW())`,
+      [store.id, refreshToken, expiresAt]
+    );
+
+    // 5. 응답 (비밀번호 해시 제외)
+    delete store.password_hash;
+
+    return res.json(
+      success(
+        {
+          token: accessToken,
+          refreshToken: refreshToken,
+          expiresIn: 3600, // 1시간 (초 단위)
+          store: {
+            id: store.id,
+            email: store.email,
+            name: store.name,
+            phoneNumber: store.phone_number,
+            businessType: store.business_type,
+            hasCompletedSetup: store.has_completed_setup,
+            businessNumber: store.business_number,
+            businessName: store.business_name,
+            representativeName: store.representative_name,
+            address: store.address,
+            detailAddress: store.detail_address,
+            latitude: store.latitude,
+            longitude: store.longitude,
+            description: store.description,
+            createdAt: store.created_at,
+            updatedAt: store.updated_at,
+          },
+        },
+        '로그인에 성공했습니다'
+      )
+    );
+  } catch (err) {
+    console.error('로그인 중 에러:', err);
+    return res.status(500).json(
+      error('INTERNAL_ERROR', '서버 오류가 발생했습니다', {
+        message: err.message,
+      })
+    );
+  }
+};
+
+/**
+ * 로그아웃
+ * POST /api/auth/logout
+ */
+export const logout = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    // Refresh Token 검증
+    if (!refreshToken || !refreshToken.trim()) {
+      return res.status(400).json(
+        error('VALIDATION_ERROR', 'Refresh Token이 필요합니다', {
+          field: 'refreshToken',
+        })
+      );
+    }
+
+    // DB에서 Refresh Token 삭제
+    const result = await query(
+      'DELETE FROM refresh_tokens WHERE token = ?',
+      [refreshToken]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json(
+        error('TOKEN_NOT_FOUND', '유효하지 않은 Refresh Token입니다')
+      );
+    }
+
+    return res.json(
+      success(
+        {
+          message: '로그아웃이 완료되었습니다',
+        },
+        '로그아웃에 성공했습니다'
+      )
+    );
+  } catch (err) {
+    console.error('로그아웃 중 에러:', err);
+    return res.status(500).json(
+      error('INTERNAL_ERROR', '서버 오류가 발생했습니다', {
+        message: err.message,
+      })
+    );
+  }
+};
+
+/**
+ * 토큰 갱신
+ * POST /api/auth/refresh
+ */
+export const refresh = async (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+
+    // Refresh Token 검증
+    if (!refreshToken || !refreshToken.trim()) {
+      return res.status(400).json(
+        error('VALIDATION_ERROR', 'Refresh Token이 필요합니다', {
+          field: 'refreshToken',
+        })
+      );
+    }
+
+    // 1. Refresh Token 검증 (JWT)
+    const verifyResult = verifyRefreshToken(refreshToken);
+
+    if (!verifyResult.valid) {
+      return res.status(401).json(
+        error('TOKEN_INVALID', 'Refresh Token이 유효하지 않습니다', {
+          message: verifyResult.error,
+        })
+      );
+    }
+
+    // 2. DB에서 Refresh Token 확인
+    const tokens = await query(
+      `SELECT store_id, expires_at
+       FROM refresh_tokens
+       WHERE token = ?
+       LIMIT 1`,
+      [refreshToken]
+    );
+
+    if (!tokens || tokens.length === 0) {
+      return res.status(401).json(
+        error('TOKEN_NOT_FOUND', 'Refresh Token을 찾을 수 없습니다')
+      );
+    }
+
+    const tokenData = tokens[0];
+
+    // 3. 만료 시간 확인
+    const now = new Date();
+    const expiresAt = new Date(tokenData.expires_at);
+
+    if (now > expiresAt) {
+      // 만료된 토큰 삭제
+      await query('DELETE FROM refresh_tokens WHERE token = ?', [refreshToken]);
+
+      return res.status(401).json(
+        error('TOKEN_EXPIRED', 'Refresh Token이 만료되었습니다')
+      );
+    }
+
+    // 4. 사용자 정보 조회
+    const stores = await query(
+      'SELECT id, email FROM stores WHERE id = ? LIMIT 1',
+      [tokenData.store_id]
+    );
+
+    if (!stores || stores.length === 0) {
+      return res.status(404).json(
+        error('STORE_NOT_FOUND', '점포를 찾을 수 없습니다')
+      );
+    }
+
+    const store = stores[0];
+
+    // 5. 새로운 Access Token 발급
+    const newAccessToken = generateAccessToken(store.id, store.email);
+
+    // 6. 응답
+    return res.json(
+      success(
+        {
+          token: newAccessToken,
+          expiresIn: 3600, // 1시간 (초 단위)
+        },
+        '토큰이 갱신되었습니다'
+      )
+    );
+  } catch (err) {
+    console.error('토큰 갱신 중 에러:', err);
     return res.status(500).json(
       error('INTERNAL_ERROR', '서버 오류가 발생했습니다', {
         message: err.message,

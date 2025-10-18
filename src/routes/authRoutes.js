@@ -7,6 +7,9 @@ import {
   sendVerificationCode,
   verifyVerificationCode,
   register,
+  login,
+  logout,
+  refresh,
 } from '../controllers/authController.js';
 import { createEmailVerificationLimiter } from '../middleware/rateLimiter.js';
 
@@ -20,5 +23,14 @@ router.post('/email/verify-code', verifyVerificationCode);
 
 // 회원가입
 router.post('/register', register);
+
+// 로그인
+router.post('/login', login);
+
+// 로그아웃
+router.post('/logout', logout);
+
+// 토큰 갱신
+router.post('/refresh', refresh);
 
 export default router;

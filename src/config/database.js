@@ -77,13 +77,25 @@ export const transaction = async (callback) => {
  * 연결 풀 종료
  * @returns {Promise<void>}
  */
+let isPoolClosed = false;
+
 export const closePool = async () => {
+  if (isPoolClosed) {
+    console.log('⚠️  연결 풀이 이미 종료되었습니다.');
+    return;
+  }
+
   try {
+    isPoolClosed = true;
     await pool.end();
-    console.log('데이터베이스 연결 풀 종료됨');
+    console.log('✅ 데이터베이스 연결 풀 종료됨');
   } catch (error) {
-    console.error('연결 풀 종료 실패:', error);
-    throw error;
+    // 이미 닫힌 경우 에러를 무시
+    if (error.message && error.message.includes('closed state')) {
+      console.log('⚠️  연결 풀이 이미 종료되었습니다.');
+      return;
+    }
+    console.error('❌ 연결 풀 종료 실패:', error.message);
   }
 };
 
@@ -104,15 +116,7 @@ export const testConnection = async () => {
   }
 };
 
-// 프로세스 종료 시 연결 풀 정리
-process.on('SIGINT', async () => {
-  await closePool();
-  process.exit(0);
-});
-
-process.on('SIGTERM', async () => {
-  await closePool();
-  process.exit(0);
-});
+// NOTE: 프로세스 종료 시 연결 풀 정리는 server.js에서 처리합니다.
+// 여기서 처리하면 중복 호출로 인한 에러가 발생할 수 있습니다.
 
 export default pool;
