@@ -426,10 +426,12 @@ export const login = async (req, res) => {
           token: accessToken,
           refreshToken: refreshToken,
           expiresIn: 3600, // 1시간 (초 단위)
-          store: {
+          user_info: {
             id: store.id,
+            storeId: store.id, // Flutter가 기대하는 필드명
             email: store.email,
             name: store.name,
+            storeName: store.name, // Flutter가 기대하는 필드명
             phoneNumber: store.phone_number,
             businessType: store.business_type,
             hasCompletedSetup: store.has_completed_setup,
