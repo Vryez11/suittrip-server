@@ -1,0 +1,198 @@
+/**
+ * 회원가입 API 유닛 테스트
+ */
+
+import { register } from '../../../src/controllers/authController.js';
+import { query } from '../../../src/config/database.js';
+import { hashPassword } from '../../../src/utils/password.js';
+import { generateAccessToken, generateRefreshToken } from '../../../src/utils/jwt.js';
+import { generateStoreId } from '../../../src/utils/generateId.js';
+
+// Mock 함수들
+jest.mock('../../../src/config/database.js');
+jest.mock('../../../src/utils/password.js');
+jest.mock('../../../src/utils/jwt.js');
+jest.mock('../../../src/utils/generateId.js');
+
+describe('회원가입 API 테스트', () => {
+  let req, res;
+
+  beforeEach(() => {
+    req = {
+      body: {
+        email: 'newstore@example.com',
+        password: 'password123',
+        name: '새로운 매장',
+        phoneNumber: '010-1234-5678',
+        businessNumber: '123-45-67890',
+        businessName: '새로운 사업체',
+        representativeName: '김철수',
+        address: '서울시 강남구',
+        detailAddress: '101호',
+        latitude: 37.4979,
+        longitude: 127.0276,
+      },
+    };
+
+    res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn().mockReturnThis(),
+    };
+
+    // Mock 초기화
+    jest.clearAllMocks();
+  });
+
+  describe('입력 검증', () => {
+    test('이메일이 없으면 400 에러를 반환해야 함', async () => {
+      req.body.email = '';
+
+      await register(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({
+            code: 'VALIDATION_ERROR',
+          }),
+        })
+      );
+    });
+
+    test('비밀번호가 8자 미만이면 400 에러를 반환해야 함', async () => {
+      req.body.password = '1234567';
+
+      await register(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({
+            code: 'VALIDATION_ERROR',
+          }),
+        })
+      );
+    });
+
+    test('점포명이 없으면 400 에러를 반환해야 함', async () => {
+      req.body.name = '';
+
+      await register(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({
+            code: 'VALIDATION_ERROR',
+          }),
+        })
+      );
+    });
+  });
+
+  describe('이메일 인증 확인', () => {
+    test('이메일 인증이 완료되지 않았으면 400 에러를 반환해야 함', async () => {
+      query.mockResolvedValueOnce([]); // 인증 기록 없음
+
+      await register(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({
+            code: 'EMAIL_NOT_VERIFIED',
+          }),
+        })
+      );
+    });
+
+    test('이메일 인증이 is_verified=false면 400 에러를 반환해야 함', async () => {
+      query.mockResolvedValueOnce([
+        {
+          email: 'newstore@example.com',
+          is_verified: false,
+        },
+      ]);
+
+      await register(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({
+            code: 'EMAIL_NOT_VERIFIED',
+          }),
+        })
+      );
+    });
+  });
+
+  describe('이메일 중복 확인', () => {
+    test('이미 가입된 이메일이면 400 에러를 반환해야 함', async () => {
+      query
+        .mockResolvedValueOnce([{ email: 'newstore@example.com', is_verified: true }]) // 인증 완료
+        .mockResolvedValueOnce([{ id: 'store_001' }]); // 이미 존재하는 매장
+
+      await register(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: false,
+          error: expect.objectContaining({
+            code: 'EMAIL_ALREADY_EXISTS',
+          }),
+        })
+      );
+    });
+  });
+
+  describe('회원가입 성공', () => {
+    test('모든 조건이 충족되면 회원가입에 성공해야 함', async () => {
+      const mockStoreId = 'store_abc123';
+      const mockHashedPassword = '$2b$10$hashedpassword';
+      const mockAccessToken = 'access_token_123';
+      const mockRefreshToken = 'refresh_token_123';
+
+      // Mock 설정
+      query
+        .mockResolvedValueOnce([{ email: 'newstore@example.com', is_verified: true }]) // 인증 완료
+        .mockResolvedValueOnce([]) // 이메일 중복 없음
+        .mockResolvedValueOnce({ insertId: 1 }) // stores 저장
+        .mockResolvedValueOnce({ insertId: 1 }) // store_status 저장
+        .mockResolvedValueOnce({ insertId: 1 }) // store_settings 저장
+        .mockResolvedValueOnce({ insertId: 1 }); // refresh_tokens 저장
+
+      generateStoreId.mockReturnValue(mockStoreId);
+      hashPassword.mockResolvedValue(mockHashedPassword);
+      generateAccessToken.mockReturnValue(mockAccessToken);
+      generateRefreshToken.mockReturnValue(mockRefreshToken);
+
+      await register(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(201);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          success: true,
+          data: expect.objectContaining({
+            store: expect.objectContaining({
+              id: mockStoreId,
+              email: 'newstore@example.com',
+              name: '새로운 매장',
+            }),
+            tokens: expect.objectContaining({
+              accessToken: mockAccessToken,
+              refreshToken: mockRefreshToken,
+              expiresIn: 3600,
+            }),
+          }),
+        })
+      );
+    });
+  });
+});

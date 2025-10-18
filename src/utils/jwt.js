@@ -37,14 +37,20 @@ export const generateAccessToken = (storeId, email, expiresIn = ACCESS_TOKEN_EXP
 /**
  * Refresh Token 생성
  * @param {string} storeId - 점포 ID
+ * @param {string} email - 이메일 (선택)
  * @param {string} expiresIn - 만료 시간 (선택, 기본값: 30d)
  * @returns {string} JWT Refresh Token
  */
-export const generateRefreshToken = (storeId, expiresIn = REFRESH_TOKEN_EXPIRES_IN) => {
+export const generateRefreshToken = (storeId, email = null, expiresIn = REFRESH_TOKEN_EXPIRES_IN) => {
   const payload = {
     storeId,
     type: 'refresh',
   };
+
+  // email이 있으면 페이로드에 추가
+  if (email) {
+    payload.email = email;
+  }
 
   return jwt.sign(payload, REFRESH_TOKEN_SECRET, {
     expiresIn,
