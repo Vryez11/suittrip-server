@@ -311,20 +311,46 @@ export const register = async (req, res) => {
       [storeId, refreshToken, expiresAt]
     );
 
-    // 10. 응답
+    // 10. 생성된 store 정보 조회 (created_at, updated_at 포함)
+    const createdStores = await query(
+      `SELECT id, email, name, phone_number, business_number,
+              business_name, representative_name, address, detail_address,
+              latitude, longitude, business_type, description,
+              has_completed_setup, created_at, updated_at
+       FROM stores
+       WHERE id = ?
+       LIMIT 1`,
+      [storeId]
+    );
+
+    const createdStore = createdStores[0];
+
+    // 11. 응답 (로그인과 동일한 형식)
     return res.status(201).json(
       success(
         {
-          store: {
-            id: storeId,
-            email,
-            name,
-            hasCompletedSetup: false,
-          },
-          tokens: {
-            accessToken,
-            refreshToken,
-            expiresIn: 3600, // 1시간 (초 단위)
+          token: accessToken,
+          refreshToken: refreshToken,
+          expiresIn: 3600, // 1시간 (초 단위)
+          user_info: {
+            id: createdStore.id,
+            storeId: createdStore.id,
+            email: createdStore.email,
+            name: createdStore.name,
+            storeName: createdStore.name,
+            phoneNumber: createdStore.phone_number,
+            businessType: createdStore.business_type,
+            hasCompletedSetup: Boolean(createdStore.has_completed_setup), // MySQL int -> boolean
+            businessNumber: createdStore.business_number,
+            businessName: createdStore.business_name,
+            representativeName: createdStore.representative_name,
+            address: createdStore.address,
+            detailAddress: createdStore.detail_address,
+            latitude: createdStore.latitude != null ? Number(createdStore.latitude) : null,
+            longitude: createdStore.longitude != null ? Number(createdStore.longitude) : null,
+            description: createdStore.description,
+            createdAt: createdStore.created_at,
+            updatedAt: createdStore.updated_at,
           },
         },
         '회원가입이 완료되었습니다'
@@ -434,14 +460,14 @@ export const login = async (req, res) => {
             storeName: store.name, // Flutter가 기대하는 필드명
             phoneNumber: store.phone_number,
             businessType: store.business_type,
-            hasCompletedSetup: store.has_completed_setup,
+            hasCompletedSetup: Boolean(store.has_completed_setup), // MySQL int(0/1) -> boolean 변환
             businessNumber: store.business_number,
             businessName: store.business_name,
             representativeName: store.representative_name,
             address: store.address,
             detailAddress: store.detail_address,
-            latitude: store.latitude,
-            longitude: store.longitude,
+            latitude: store.latitude != null ? Number(store.latitude) : null,
+            longitude: store.longitude != null ? Number(store.longitude) : null,
             description: store.description,
             createdAt: store.created_at,
             updatedAt: store.updated_at,
