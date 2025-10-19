@@ -71,14 +71,37 @@ app.get('/health', async (req, res) => {
 // ============================================================================
 
 import authRoutes from './routes/authRoutes.js';
+import storeRoutes from './routes/storeRoutes.js';
+import dashboardRoutes from './routes/dashboardRoutes.js';
+import storageRoutes from './routes/storageRoutes.js';
+import reservationRoutes from './routes/reservationRoutes.js';
+import statisticsRoutes from './routes/statisticsRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
+import reviewRoutes from './routes/reviewRoutes.js';
 
 // 인증 라우트
 app.use('/api/auth', authRoutes);
 
-// TODO: 추가 라우트 연결
-// app.use('/api/store', storeRoutes);
-// app.use('/api/reservations', reservationRoutes);
-// ...
+// 점포 라우트
+app.use('/api/store', storeRoutes);
+
+// 대시보드 라우트
+app.use('/api/dashboard', dashboardRoutes);
+
+// 보관함 라우트
+app.use('/api/storages', storageRoutes);
+
+// 예약 라우트
+app.use('/api/reservations', reservationRoutes);
+
+// 통계 라우트
+app.use('/api/statistics', statisticsRoutes);
+
+// 알림 라우트
+app.use('/api/notifications', notificationRoutes);
+
+// 리뷰 라우트
+app.use('/api/reviews', reviewRoutes);
 
 // ============================================================================
 // 404 에러 핸들러
