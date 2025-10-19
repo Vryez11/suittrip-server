@@ -12,6 +12,7 @@ export const success = (data = null, message = null) => {
   const response = {
     success: true,
     data,
+    timestamp: new Date().toISOString(),
   };
 
   if (message) {
