@@ -78,6 +78,7 @@ import reservationRoutes from './routes/reservationRoutes.js';
 import statisticsRoutes from './routes/statisticsRoutes.js';
 import notificationRoutes from './routes/notificationRoutes.js';
 import reviewRoutes from './routes/reviewRoutes.js';
+import checkinRoutes from './routes/checkin.js';
 
 // 인증 라우트
 app.use('/api/auth', authRoutes);
@@ -88,8 +89,11 @@ app.use('/api/store', storeRoutes);
 // 대시보드 라우트
 app.use('/api/dashboard', dashboardRoutes);
 
-// 보관함 라우트
+// 보관함 라우트 (Locker units)
 app.use('/api/storages', storageRoutes);
+
+// 체크인 라우트 (현재 보관 중인 짐 - Flutter StorageItem)
+app.use('/api/checkins', checkinRoutes);
 
 // 예약 라우트
 app.use('/api/reservations', reservationRoutes);
