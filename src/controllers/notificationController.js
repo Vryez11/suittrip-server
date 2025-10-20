@@ -60,13 +60,13 @@ export const getNotifications = async (req, res) => {
       [...params, Number(limit), offset]
     );
 
-    // 응답 데이터 구성
+    // 응답 데이터 구성 - Flutter NotificationItem 모델에 맞춤
     const formattedNotifications = notifications.map(notification => {
-      // data JSON 파싱
-      let data = null;
+      // data JSON 파싱 -> actionData로 변경
+      let actionData = {};
       if (notification.data) {
         try {
-          data = typeof notification.data === 'string'
+          actionData = typeof notification.data === 'string'
             ? JSON.parse(notification.data)
             : notification.data;
         } catch (e) {
@@ -74,16 +74,18 @@ export const getNotifications = async (req, res) => {
         }
       }
 
+      // luggageImageUrls 추출 (actionData에서)
+      const luggageImageUrls = actionData.luggageImageUrls || [];
+
       return {
         id: notification.id,
-        storeId: notification.storeId,
         type: notification.type,
         title: notification.title,
         message: notification.message,
-        data,
+        timestamp: notification.createdAt, // Flutter는 timestamp 필드 사용
         isRead: Boolean(notification.isRead),
-        readAt: notification.readAt,
-        createdAt: notification.createdAt,
+        actionData,
+        luggageImageUrls,
       };
     });
 
@@ -147,11 +149,11 @@ export const getNotification = async (req, res) => {
 
     const notification = notifications[0];
 
-    // data JSON 파싱
-    let data = null;
+    // data JSON 파싱 -> actionData로 변경
+    let actionData = {};
     if (notification.data) {
       try {
-        data = typeof notification.data === 'string'
+        actionData = typeof notification.data === 'string'
           ? JSON.parse(notification.data)
           : notification.data;
       } catch (e) {
@@ -159,16 +161,19 @@ export const getNotification = async (req, res) => {
       }
     }
 
+    // luggageImageUrls 추출
+    const luggageImageUrls = actionData.luggageImageUrls || [];
+
+    // Flutter NotificationItem 모델에 맞춤
     const result = {
       id: notification.id,
-      storeId: notification.storeId,
       type: notification.type,
       title: notification.title,
       message: notification.message,
-      data,
+      timestamp: notification.createdAt,
       isRead: Boolean(notification.isRead),
-      readAt: notification.readAt,
-      createdAt: notification.createdAt,
+      actionData,
+      luggageImageUrls,
     };
 
     return res.json(success(result, '알림 조회 성공'));
