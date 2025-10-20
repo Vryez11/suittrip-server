@@ -50,17 +50,14 @@ export const getDailyStatistics = async (req, res) => {
         [storeId, start.toISOString().split('T')[0], end.toISOString().split('T')[0]]
       );
 
+      // Flutter DailyStatData 형식에 맞춤 (day, revenue, reservations)
       return res.json(
         success(
           {
-            statistics: realtimeStats.map(stat => ({
-              date: stat.date,
-              totalReservations: Number(stat.totalReservations),
-              completedReservations: Number(stat.completedReservations),
-              cancelledReservations: Number(stat.cancelledReservations),
-              totalRevenue: Number(stat.totalRevenue),
-              averageOccupancyRate: 0,
-              newCustomers: 0,
+            dailyData: realtimeStats.map(stat => ({
+              day: stat.date instanceof Date ? stat.date.toISOString().split('T')[0] : stat.date,
+              revenue: Number(stat.totalRevenue),
+              reservations: Number(stat.totalReservations),
             })),
             startDate: start.toISOString().split('T')[0],
             endDate: end.toISOString().split('T')[0],
@@ -70,17 +67,14 @@ export const getDailyStatistics = async (req, res) => {
       );
     }
 
+    // Flutter DailyStatData 형식에 맞춤 (day, revenue, reservations)
     return res.json(
       success(
         {
-          statistics: statistics.map(stat => ({
-            date: stat.date,
-            totalReservations: Number(stat.totalReservations),
-            completedReservations: Number(stat.completedReservations),
-            cancelledReservations: Number(stat.cancelledReservations),
-            totalRevenue: Number(stat.totalRevenue),
-            averageOccupancyRate: Number(stat.averageOccupancyRate),
-            newCustomers: Number(stat.newCustomers),
+          dailyData: statistics.map(stat => ({
+            day: stat.date instanceof Date ? stat.date.toISOString().split('T')[0] : stat.date,
+            revenue: Number(stat.totalRevenue),
+            reservations: Number(stat.totalReservations),
           })),
           startDate: start.toISOString().split('T')[0],
           endDate: end.toISOString().split('T')[0],
