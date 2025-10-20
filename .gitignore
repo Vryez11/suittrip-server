@@ -76,3 +76,5 @@ claude.md
 *.pid
 *.seed
 *.pid.lock
+nul
+IMPLEMENTATION_COMPLETE.md
