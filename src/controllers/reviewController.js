@@ -69,7 +69,7 @@ export const getReviews = async (req, res) => {
       [...params, Number(limit), offset]
     );
 
-    // 응답 데이터 구성
+    // 응답 데이터 구성 - Flutter ReviewItem 모델에 맞춤
     const formattedReviews = reviews.map(review => {
       // images JSON 파싱
       let images = [];
@@ -83,23 +83,22 @@ export const getReviews = async (req, res) => {
         }
       }
 
+      // isResponded: response가 있으면 true
+      const isResponded = review.response !== null && review.response !== undefined && review.response.trim() !== '';
+
       return {
         id: review.id,
-        storeId: review.storeId,
         customerId: review.customerId,
         customerName: review.customerName,
+        storeId: review.storeId,
         reservationId: review.reservationId,
-        storageId: review.storageId,
-        storageNumber: review.storageNumber,
-        type: review.type,
         rating: review.rating,
         comment: review.comment,
-        images,
-        status: review.status,
-        response: review.response,
-        responseDate: review.responseDate,
         createdAt: review.createdAt,
-        updatedAt: review.updatedAt,
+        isResponded,
+        response: review.response || null,
+        respondedAt: review.responseDate || null,
+        type: review.type || 'storage', // Flutter ReviewType: storage, store
       };
     });
 
@@ -202,23 +201,23 @@ export const getReview = async (req, res) => {
       }
     }
 
+    // isResponded: response가 있으면 true
+    const isResponded = review.response !== null && review.response !== undefined && review.response.trim() !== '';
+
+    // Flutter ReviewItem 모델에 맞춘 응답 구조
     const result = {
       id: review.id,
-      storeId: review.storeId,
       customerId: review.customerId,
       customerName: review.customerName,
+      storeId: review.storeId,
       reservationId: review.reservationId,
-      storageId: review.storageId,
-      storageNumber: review.storageNumber,
-      type: review.type,
       rating: review.rating,
       comment: review.comment,
-      images,
-      status: review.status,
-      response: review.response,
-      responseDate: review.responseDate,
       createdAt: review.createdAt,
-      updatedAt: review.updatedAt,
+      isResponded,
+      response: review.response || null,
+      respondedAt: review.responseDate || null,
+      type: review.type || 'storage',
     };
 
     return res.json(success(result, '리뷰 조회 성공'));
