@@ -5,12 +5,12 @@
 
 import express from 'express';
 import { getCheckins, getCheckin, checkoutItem } from '../controllers/checkinController.js';
-import { authenticateToken } from '../middleware/auth.js';
+import { authenticate } from '../middleware/auth.js';
 
 const router = express.Router();
 
 // 모든 라우트에 인증 미들웨어 적용
-router.use(authenticateToken);
+router.use(authenticate);
 
 /**
  * @route GET /api/checkins

@@ -5,6 +5,7 @@
 
 import express from 'express';
 import {
+  createReservation,
   getReservations,
   getReservation,
   approveReservation,
@@ -18,6 +19,12 @@ const router = express.Router();
 
 // 모든 예약 라우트에 인증 미들웨어 적용
 router.use(authenticate);
+
+/**
+ * 예약 생성
+ * POST /api/reservations
+ */
+router.post('/', createReservation);
 
 /**
  * 예약 목록 조회

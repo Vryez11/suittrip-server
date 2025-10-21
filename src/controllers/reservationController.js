@@ -5,6 +5,130 @@
 
 import { success, error } from '../utils/response.js';
 import { query } from '../config/database.js';
+import { v4 as uuidv4 } from 'uuid';
+
+/**
+ * 예약 생성
+ * POST /api/reservations
+ */
+export const createReservation = async (req, res) => {
+  try {
+    const storeId = req.storeId || req.body.storeId; // 매장 앱이 아닌 고객 앱에서도 호출 가능
+    const {
+      customerName,
+      phoneNumber,
+      email,
+      requestTime,
+      startTime,
+      endTime,
+      duration,
+      price,
+      bagCount,
+      message,
+      specialRequests,
+      luggageImageUrls,
+      paymentMethod = 'card'
+    } = req.body;
+
+    // 필수 필드 검증
+    if (!customerName || !phoneNumber || !startTime || !duration || !bagCount) {
+      return res.status(400).json(
+        error('VALIDATION_ERROR', '필수 정보가 누락되었습니다', {
+          required: ['customerName', 'phoneNumber', 'startTime', 'duration', 'bagCount']
+        })
+      );
+    }
+
+    // 매장 ID 확인
+    if (!storeId) {
+      return res.status(400).json(
+        error('VALIDATION_ERROR', '매장 ID가 필요합니다')
+      );
+    }
+
+    // 날짜를 MySQL DATETIME 형식으로 변환하는 함수
+    const toMySQLDateTime = (dateString) => {
+      if (!dateString) return null;
+      const date = new Date(dateString);
+      // MySQL DATETIME 형식: 'YYYY-MM-DD HH:MM:SS'
+      return date.toISOString().slice(0, 19).replace('T', ' ');
+    };
+
+    // 예약 ID 생성
+    const reservationId = `res_${uuidv4()}`;
+
+    // 종료 시간 계산 (endTime이 없으면 startTime + duration으로 계산)
+    let calculatedEndTime = endTime;
+    if (!calculatedEndTime && startTime && duration) {
+      const start = new Date(startTime);
+      start.setHours(start.getHours() + duration);
+      calculatedEndTime = start.toISOString();
+    }
+
+    // 고객 ID 생성 (실제로는 고객 앱에서 전달받아야 함)
+    const customerId = req.body.customerId || `customer_${Date.now()}`;
+
+    // 예약 생성
+    await query(
+      `INSERT INTO reservations (
+        id, store_id, customer_id, customer_name, customer_phone, customer_email,
+        status, start_time, end_time, request_time, duration, bag_count,
+        total_amount, message, special_requests, luggage_image_urls,
+        payment_status, payment_method, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      [
+        reservationId,
+        storeId,
+        customerId,
+        customerName,
+        phoneNumber,
+        email || null,
+        'pending', // 초기 상태는 대기중
+        toMySQLDateTime(startTime),
+        toMySQLDateTime(calculatedEndTime),
+        toMySQLDateTime(requestTime || new Date().toISOString()),
+        duration,
+        bagCount,
+        price || 0,
+        message || null,
+        specialRequests || null,
+        luggageImageUrls ? JSON.stringify(luggageImageUrls) : null,
+        'pending', // 결제 상태
+        paymentMethod
+      ]
+    );
+
+    // 생성된 예약 조회
+    const [newReservation] = await query(
+      `SELECT
+        id, store_id as storeId, customer_id as customerId,
+        customer_name as customerName, customer_phone as phoneNumber,
+        customer_email as email, status, start_time as startTime,
+        end_time as endTime, request_time as requestTime, duration,
+        bag_count as bagCount, total_amount as price, message,
+        special_requests as specialRequests, payment_status as paymentStatus,
+        payment_method as paymentMethod, created_at as createdAt
+      FROM reservations
+      WHERE id = ?`,
+      [reservationId]
+    );
+
+    return res.status(201).json(
+      success({
+        ...newReservation,
+        phoneNumber: newReservation.phoneNumber, // Flutter 호환성
+        price: newReservation.price // Flutter 호환성
+      }, '예약이 성공적으로 생성되었습니다')
+    );
+  } catch (err) {
+    console.error('예약 생성 중 에러:', err);
+    return res.status(500).json(
+      error('INTERNAL_ERROR', '서버 오류가 발생했습니다', {
+        message: err.message
+      })
+    );
+  }
+};
 
 /**
  * 예약 목록 조회

@@ -21,6 +21,8 @@ router.use(authenticate);
 // 점포 상태
 router.get('/status', getStoreStatus);
 router.put('/status', updateStoreStatus);
+router.post('/open', updateStoreStatus); // Flutter 앱 호환성을 위한 alias
+router.post('/close', updateStoreStatus); // Flutter 앱 호환성을 위한 alias
 
 // 점포 정보
 router.get('/', getStoreInfo);
