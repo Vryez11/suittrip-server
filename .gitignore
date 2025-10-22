@@ -80,3 +80,6 @@ nul
 IMPLEMENTATION_COMPLETE.md
 COMPATIBILITY_REPORT.md
 POSTMAN_RE
+
+# Git Actions 설정 되면 삭제
+.github/

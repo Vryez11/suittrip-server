@@ -1,0 +1,64 @@
+# Docker Compose 설정 파일
+version: '3.8'
+
+services:
+  # Node.js 백엔드 서버
+  app:
+    build:  .
+    image: vryez11/suittrip-server:latest
+    container_name: suittrip-server
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_USER=root
+      - DB_PASSWORD=test1234
+      - DB_NAME=suittrip
+      - JWT_ACCESS_TOKEN_SECRET=a35d121a8f7468b3661d8f9835895ade
+      - JWT_ACCESS_TOKEN_EXPIRES_IN=1h
+      - JWT_REFRESH_TOKEN_SECRET=cd2890f48aba1442d06a28111916ec62
+      - JWT_REFRESH_TOKEN_EXPIRES_IN=30d
+      - EMAIL_SERVICE=gmail
+      - EMAIL_HOST=smtp.gmail.com
+      - EMAIL_PORT=587
+      - EMAIL_SECURE=false
+      - EMAIL_USER=vryez111@gmail.com
+      - EMAIL_PASSWORD=tryhvnovoerdjasr
+      - EMAIL_FROM=Suittrip <noreply@suittrip.com>
+      - EMAIL_VERIFICATION_CODE_LENGTH=6
+      - EMAIL_VERIFICATION_CODE_EXPIRES_IN=180
+      - EMAIL_VERIFICATION_MAX_ATTEMPTS=5
+      - EMAIL_VERIFICATION_RATE_LIMIT_WINDOW=60
+      - EMAIL_VERIFICATION_RATE_LIMIT_MAX=1
+    depends_on:
+      - mysql
+    networks:
+      - suittrip-network
+    volumes:
+      - ./uploads:/app/uploads
+
+  # MySQL 데이터베이스
+  mysql:
+    image: mysql:8.0
+    container_name: suittrip-mysql
+    restart: always
+    environment:
+      - MYSQL_ROOT_PASSWORD=test1234
+      - MYSQL_DATABASE=suittrip
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    networks:
+      - suittrip-network
+
+networks:
+  suittrip-network:
+    driver: bridge
+
+volumes:
+  mysql-data:
