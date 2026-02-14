@@ -652,6 +652,60 @@ CREATE TABLE IF NOT EXISTS customer_refresh_tokens (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='refresh tokens for customers';
 
 -- ============================================================================
+-- store_registrations - partner store registration requests (landing)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS store_registrations (
+  id VARCHAR(255) PRIMARY KEY COMMENT 'registration id',
+  store_id VARCHAR(255) NULL COMMENT 'store id if approved/created',
+
+  -- basic info
+  name VARCHAR(255) NOT NULL COMMENT 'store name',
+  category VARCHAR(100) NOT NULL COMMENT 'category',
+  description TEXT NULL COMMENT 'short description',
+
+  -- location
+  zonecode VARCHAR(20) NULL COMMENT 'postal code',
+  address TEXT NOT NULL COMMENT 'address',
+  detail_address TEXT NULL COMMENT 'detail address',
+  near_station VARCHAR(255) NULL COMMENT 'near station',
+  latitude DECIMAL(10, 8) NULL COMMENT 'latitude',
+  longitude DECIMAL(11, 8) NULL COMMENT 'longitude',
+  directions TEXT NULL COMMENT 'directions',
+
+  -- contact
+  phone_number VARCHAR(30) NOT NULL COMMENT 'store phone',
+  owner_name VARCHAR(255) NOT NULL COMMENT 'owner name',
+  owner_email VARCHAR(255) NOT NULL COMMENT 'owner email',
+  owner_phone VARCHAR(30) NOT NULL COMMENT 'owner phone',
+
+  -- business details (JSON fields from form)
+  operating_hours JSON NULL COMMENT 'operating hours',
+  coupon_enabled TINYINT NOT NULL DEFAULT 0 COMMENT 'coupon enabled',
+  luggage_options JSON NULL COMMENT 'luggage options',
+  amenities JSON NULL COMMENT 'amenities',
+  parking JSON NULL COMMENT 'parking info',
+  menu_items JSON NULL COMMENT 'menu items',
+
+  -- media
+  main_image TEXT NULL COMMENT 'main image',
+  logo TEXT NULL COMMENT 'logo image',
+  menu_images JSON NULL COMMENT 'menu images',
+
+  -- extra info
+  store_info JSON NULL COMMENT 'extra store info',
+
+  status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending' COMMENT 'review status',
+  rejected_reason TEXT NULL COMMENT 'rejected reason',
+
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT 'created at',
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT 'updated at',
+
+  INDEX idx_store_reg_status (status),
+  INDEX idx_store_reg_store (store_id),
+  INDEX idx_store_reg_owner_email (owner_email)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='partner store registration requests';
+
+-- ============================================================================
 -- coupons - 고객 쿠폰
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS coupons (
