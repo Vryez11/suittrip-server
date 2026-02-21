@@ -5,6 +5,7 @@
 import express from 'express';
 import { createStoreRegistration, getStoreById } from '../controllers/publicStoreController.js';
 import { confirmReservationWithPin } from '../controllers/tPublicReservationController.js';
+import { useCouponWithPin } from '../controllers/tPublicCouponController.js';
 
 const router = express.Router();
 
@@ -12,5 +13,6 @@ const router = express.Router();
 router.post('/store-registrations', createStoreRegistration);
 router.get('/stores/:storeId', getStoreById);
 router.post('/public/reservations/confirm', confirmReservationWithPin);
+router.post('/public/coupons/use', useCouponWithPin);
 
 export default router;
