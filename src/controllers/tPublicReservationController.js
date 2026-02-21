@@ -20,6 +20,14 @@ const STORAGE_TYPE_NAMES = {
   special: '특수',
   refrigeration: '냉장',
 };
+const STORAGE_TYPE_DESCRIPTIONS = {
+  s: '소형 짐 보관',
+  m: '중형 짐 보관',
+  l: '대형 짐 보관',
+  xl: '특대형 짐 보관',
+  special: '특수 짐 보관',
+  refrigeration: '냉장 보관',
+};
 
 const getDayKey = (date = new Date()) => {
   const day = date.getDay(); // 0: Sun ... 6: Sat
@@ -63,6 +71,25 @@ const normalizeTime = (timeValue) => {
   if (!timeValue) return null;
   const str = String(timeValue);
   return str.length >= 5 ? str.slice(0, 5) : str;
+};
+
+const getPricePerDay = (settingsRow, storageType) => {
+  if (!settingsRow || !storageType) return null;
+  if (storageType === 's') return settingsRow.s_daily_rate ?? null;
+  if (storageType === 'm') return settingsRow.m_daily_rate ?? null;
+  if (storageType === 'l') return settingsRow.l_daily_rate ?? null;
+  if (storageType === 'xl') return settingsRow.xl_daily_rate ?? null;
+  if (storageType === 'special') return settingsRow.special_daily_rate ?? null;
+  if (storageType === 'refrigeration') return settingsRow.refrigeration_daily_rate ?? null;
+  return null;
+};
+
+const getExpectedPickupTime = (startTime, duration, endTime) => {
+  if (endTime) return endTime;
+  if (!startTime || !duration) return null;
+  const dt = new Date(startTime);
+  dt.setHours(dt.getHours() + Number(duration));
+  return dt;
 };
 
 /**
@@ -428,6 +455,159 @@ export const listPublicReservationsByPhone = async (req, res) => {
     );
   } catch (err) {
     console.error('[listPublicReservationsByPhone] error:', err);
+    return res.status(500).json(
+      error('INTERNAL_SERVER_ERROR', '서버 오류가 발생했습니다.', { message: err.message })
+    );
+  }
+};
+
+/**
+ * 8. 예약 상세 조회 (비회원)
+ * GET /api/t/public/reservations/:reservationId?phone={phone}
+ */
+export const getPublicReservationDetail = async (req, res) => {
+  try {
+    const { reservationId } = req.params;
+    const { phone } = req.query;
+
+    if (!reservationId || !phone) {
+      return res.status(400).json(
+        error('VALIDATION_ERROR', '필수 정보가 누락되었습니다.', {
+          required: ['reservationId', 'phone'],
+        })
+      );
+    }
+
+    const reservationRows = await query(
+      `SELECT
+         id, store_id, customer_phone, status, created_at, confirmed_at,
+         requested_storage_type, bag_count, total_amount, start_time, end_time, duration
+       FROM reservations
+       WHERE id = ?
+       LIMIT 1`,
+      [reservationId]
+    );
+
+    if (!reservationRows || reservationRows.length === 0) {
+      return res.status(404).json(error('RESERVATION_NOT_FOUND', '예약을 찾을 수 없습니다.'));
+    }
+
+    const reservation = reservationRows[0];
+    if (reservation.customer_phone !== phone) {
+      return res.status(403).json(error('FORBIDDEN', '본인 확인에 실패했습니다.'));
+    }
+
+    const [stores, statuses, hours, settingsRows, couponRows] = await Promise.all([
+      query(
+        `SELECT
+           id, business_name, business_type, description, address, detail_address,
+           latitude, longitude, phone_number, profile_image_url
+         FROM stores
+         WHERE id = ?
+         LIMIT 1`,
+        [reservation.store_id]
+      ),
+      query(
+        `SELECT store_id, status, today_open_time, today_close_time
+         FROM store_status
+         WHERE store_id = ?
+         ORDER BY updated_at DESC
+         LIMIT 1`,
+        [reservation.store_id]
+      ),
+      query(
+        `SELECT * FROM store_operating_hours WHERE store_id = ? LIMIT 1`,
+        [reservation.store_id]
+      ),
+      query(
+        `SELECT * FROM store_settings WHERE store_id = ? LIMIT 1`,
+        [reservation.store_id]
+      ),
+      query(
+        `SELECT
+           id, title, type, benefit_item, benefit_value,
+           discount_amount, discount_rate, status, used_at, expires_at
+         FROM coupons
+         WHERE reservation_id = ?
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [reservation.id]
+      ),
+    ]);
+
+    const store = stores && stores.length > 0 ? stores[0] : null;
+    const status = statuses && statuses.length > 0 ? statuses[0] : null;
+    const hour = hours && hours.length > 0 ? hours[0] : null;
+    const settings = settingsRows && settingsRows.length > 0 ? settingsRows[0] : null;
+    const coupon = couponRows && couponRows.length > 0 ? couponRows[0] : null;
+
+    const schedule = getTodaySchedule(hour);
+    let isCurrentlyOpen = false;
+    if (status?.status === 'open') isCurrentlyOpen = true;
+    else if (status?.status === 'closed' || status?.status === 'temporarily_closed') isCurrentlyOpen = false;
+    else isCurrentlyOpen = isOpenNowFromHours(hour);
+
+    const expectedPickupTime = getExpectedPickupTime(
+      reservation.start_time,
+      reservation.duration,
+      reservation.end_time
+    );
+
+    return res.status(200).json(
+      success({
+        id: reservation.id,
+        status: reservation.status,
+        created_at: reservation.created_at,
+        confirmed_at: reservation.confirmed_at,
+        store: store
+          ? {
+              id: store.id,
+              name: store.business_name,
+              category: store.business_type,
+              description: store.description,
+              address: store.address,
+              detailed_address: store.detail_address,
+              latitude: store.latitude != null ? Number(store.latitude) : null,
+              longitude: store.longitude != null ? Number(store.longitude) : null,
+              phone_number: store.phone_number,
+              main_image: store.profile_image_url,
+              today_open_time: normalizeTime(status?.today_open_time || schedule.openTime),
+              today_close_time: normalizeTime(status?.today_close_time || schedule.closeTime),
+              is_currently_open: isCurrentlyOpen,
+            }
+          : null,
+        luggage_type: reservation.requested_storage_type,
+        luggage_type_name:
+          STORAGE_TYPE_NAMES[reservation.requested_storage_type] ||
+          reservation.requested_storage_type,
+        luggage_description:
+          STORAGE_TYPE_DESCRIPTIONS[reservation.requested_storage_type] ||
+          reservation.requested_storage_type,
+        bag_count: reservation.bag_count,
+        price_per_day: getPricePerDay(settings, reservation.requested_storage_type),
+        total_amount: reservation.total_amount,
+        start_time: reservation.start_time,
+        duration: reservation.duration,
+        expected_pickup_time: expectedPickupTime,
+        coupon: coupon
+          ? {
+              id: coupon.id,
+              title: coupon.title,
+              type: coupon.type,
+              benefit_item: coupon.benefit_item,
+              benefit_value: coupon.benefit_value,
+              discount_amount: coupon.discount_amount,
+              discount_rate: coupon.discount_rate,
+              status: coupon.status,
+              used_at: coupon.used_at,
+              expires_at: coupon.expires_at,
+            }
+          : null,
+        phone: reservation.customer_phone,
+      })
+    );
+  } catch (err) {
+    console.error('[getPublicReservationDetail] error:', err);
     return res.status(500).json(
       error('INTERNAL_SERVER_ERROR', '서버 오류가 발생했습니다.', { message: err.message })
     );
