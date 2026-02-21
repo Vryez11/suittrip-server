@@ -4,11 +4,13 @@
 
 import express from 'express';
 import { createStoreRegistration, getStoreById } from '../controllers/publicStoreController.js';
+import { confirmReservationWithPin } from '../controllers/tPublicReservationController.js';
 
 const router = express.Router();
 
 // 0. 파트너 등록 신청
 router.post('/store-registrations', createStoreRegistration);
 router.get('/stores/:storeId', getStoreById);
+router.post('/public/reservations/confirm', confirmReservationWithPin);
 
 export default router;
