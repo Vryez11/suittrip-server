@@ -12,6 +12,58 @@ const PIN_LOCK_MINUTES = 10;
 const ALLOWED_CONFIRM_STATUSES = ['pending', 'pending_approval'];
 
 const isValidPinFormat = (pin) => /^[0-9]{4}$|^[0-9]{6}$/.test(String(pin || ''));
+const STORAGE_TYPE_NAMES = {
+  s: '소형',
+  m: '중형',
+  l: '대형',
+  xl: '특대형',
+  special: '특수',
+  refrigeration: '냉장',
+};
+
+const getDayKey = (date = new Date()) => {
+  const day = date.getDay(); // 0: Sun ... 6: Sat
+  if (day === 0) return 'sunday';
+  if (day === 1) return 'monday';
+  if (day === 2) return 'tuesday';
+  if (day === 3) return 'wednesday';
+  if (day === 4) return 'thursday';
+  if (day === 5) return 'friday';
+  return 'saturday';
+};
+
+const getTodaySchedule = (hoursRow) => {
+  if (!hoursRow) {
+    return { closeTime: null, isOperating: false };
+  }
+  const key = getDayKey();
+  return {
+    closeTime: hoursRow[`${key}_close`] || null,
+    openTime: hoursRow[`${key}_open`] || null,
+    isOperating: Boolean(hoursRow[`${key}_operating`]),
+  };
+};
+
+const isOpenNowFromHours = (hoursRow) => {
+  const schedule = getTodaySchedule(hoursRow);
+  if (!schedule.isOperating || !schedule.openTime || !schedule.closeTime) return false;
+
+  const now = new Date();
+  const [openH, openM] = String(schedule.openTime).split(':').map(Number);
+  const [closeH, closeM] = String(schedule.closeTime).split(':').map(Number);
+
+  const open = new Date(now);
+  open.setHours(openH || 0, openM || 0, 0, 0);
+  const close = new Date(now);
+  close.setHours(closeH || 0, closeM || 0, 0, 0);
+  return now >= open && now <= close;
+};
+
+const normalizeTime = (timeValue) => {
+  if (!timeValue) return null;
+  const str = String(timeValue);
+  return str.length >= 5 ? str.slice(0, 5) : str;
+};
 
 /**
  * 5. 예약 확정 (PIN 검증)
@@ -232,3 +284,152 @@ export const confirmReservationWithPin = async (req, res) => {
   }
 };
 
+/**
+ * 7. 예약 목록 조회 (비회원)
+ * GET /api/t/public/reservations?phone={phone}
+ */
+export const listPublicReservationsByPhone = async (req, res) => {
+  try {
+    const { phone } = req.query;
+    if (!phone) {
+      return res.status(400).json(
+        error('VALIDATION_ERROR', '전화번호(phone)는 필수입니다.')
+      );
+    }
+
+    const reservations = await query(
+      `SELECT
+         id, store_id, status, created_at, confirmed_at,
+         requested_storage_type, bag_count, total_amount, start_time, duration
+       FROM reservations
+       WHERE customer_phone = ?
+       ORDER BY created_at DESC`,
+      [phone]
+    );
+
+    if (!reservations || reservations.length === 0) {
+      return res.status(200).json(
+        success({
+          reservations: [],
+          total_count: 0,
+        })
+      );
+    }
+
+    const storeIds = [...new Set(reservations.map((r) => r.store_id).filter(Boolean))];
+    const reservationIds = reservations.map((r) => r.id);
+
+    const storePlaceholders = storeIds.map(() => '?').join(',');
+    const reservationPlaceholders = reservationIds.map(() => '?').join(',');
+
+    const [stores, statuses, hours, coupons] = await Promise.all([
+      query(
+        `SELECT id, business_name, business_type, address, phone_number, profile_image_url
+         FROM stores
+         WHERE id IN (${storePlaceholders})`,
+        storeIds
+      ),
+      query(
+        `SELECT s1.store_id, s1.status, s1.today_open_time, s1.today_close_time
+         FROM store_status s1
+         INNER JOIN (
+           SELECT store_id, MAX(updated_at) AS max_updated_at
+           FROM store_status
+           WHERE store_id IN (${storePlaceholders})
+           GROUP BY store_id
+         ) s2 ON s1.store_id = s2.store_id AND s1.updated_at = s2.max_updated_at`,
+        storeIds
+      ),
+      query(
+        `SELECT *
+         FROM store_operating_hours
+         WHERE store_id IN (${storePlaceholders})`,
+        storeIds
+      ),
+      query(
+        `SELECT
+           id, reservation_id, title, type, benefit_item, benefit_value,
+           discount_amount, discount_rate, status, expires_at
+         FROM coupons
+         WHERE reservation_id IN (${reservationPlaceholders})
+         ORDER BY created_at DESC`,
+        reservationIds
+      ),
+    ]);
+
+    const storeMap = Object.fromEntries(stores.map((s) => [s.id, s]));
+    const statusMap = Object.fromEntries(statuses.map((s) => [s.store_id, s]));
+    const hourMap = Object.fromEntries(hours.map((h) => [h.store_id, h]));
+
+    const couponMap = {};
+    for (const coupon of coupons) {
+      if (!couponMap[coupon.reservation_id]) {
+        couponMap[coupon.reservation_id] = coupon;
+      }
+    }
+
+    const items = reservations.map((reservation) => {
+      const store = storeMap[reservation.store_id] || null;
+      const status = statusMap[reservation.store_id] || null;
+      const hour = hourMap[reservation.store_id] || null;
+      const schedule = getTodaySchedule(hour);
+
+      let isCurrentlyOpen = false;
+      if (status?.status === 'open') isCurrentlyOpen = true;
+      else if (status?.status === 'closed' || status?.status === 'temporarily_closed') isCurrentlyOpen = false;
+      else isCurrentlyOpen = isOpenNowFromHours(hour);
+
+      const coupon = couponMap[reservation.id];
+
+      return {
+        id: reservation.id,
+        status: reservation.status,
+        created_at: reservation.created_at,
+        confirmed_at: reservation.confirmed_at,
+        store: store
+          ? {
+              id: store.id,
+              name: store.business_name,
+              category: store.business_type,
+              address: store.address,
+              phone_number: store.phone_number,
+              main_image: store.profile_image_url,
+              today_close_time: normalizeTime(status?.today_close_time || schedule.closeTime),
+              is_currently_open: isCurrentlyOpen,
+            }
+          : null,
+        luggage_type: reservation.requested_storage_type,
+        luggage_type_name: STORAGE_TYPE_NAMES[reservation.requested_storage_type] || reservation.requested_storage_type,
+        bag_count: reservation.bag_count,
+        total_amount: reservation.total_amount,
+        start_time: reservation.start_time,
+        duration: reservation.duration,
+        coupon: coupon
+          ? {
+              id: coupon.id,
+              title: coupon.title,
+              type: coupon.type,
+              benefit_item: coupon.benefit_item,
+              benefit_value: coupon.benefit_value,
+              discount_amount: coupon.discount_amount,
+              discount_rate: coupon.discount_rate,
+              status: coupon.status,
+              expires_at: coupon.expires_at,
+            }
+          : null,
+      };
+    });
+
+    return res.status(200).json(
+      success({
+        reservations: items,
+        total_count: items.length,
+      })
+    );
+  } catch (err) {
+    console.error('[listPublicReservationsByPhone] error:', err);
+    return res.status(500).json(
+      error('INTERNAL_SERVER_ERROR', '서버 오류가 발생했습니다.', { message: err.message })
+    );
+  }
+};
