@@ -9,7 +9,7 @@ import {
   getPublicReservationDetail,
   listPublicReservationsByPhone,
 } from '../controllers/tPublicReservationController.js';
-import { useCouponWithPin } from '../controllers/tPublicCouponController.js';
+import { listPublicCouponsByPhone, useCouponWithPin } from '../controllers/tPublicCouponController.js';
 
 const router = express.Router();
 
@@ -19,6 +19,7 @@ router.get('/stores/:storeId', getStoreById);
 router.post('/public/reservations/confirm', confirmReservationWithPin);
 router.get('/public/reservations', listPublicReservationsByPhone);
 router.get('/public/reservations/:reservationId', getPublicReservationDetail);
+router.get('/public/coupons', listPublicCouponsByPhone);
 router.post('/public/coupons/use', useCouponWithPin);
 
 export default router;

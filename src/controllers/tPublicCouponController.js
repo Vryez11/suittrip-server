@@ -175,3 +175,83 @@ export const useCouponWithPin = async (req, res) => {
   }
 };
 
+/**
+ * 9. 쿠폰 조회 (비회원)
+ * GET /api/t/public/coupons?phone={phone}
+ */
+export const listPublicCouponsByPhone = async (req, res) => {
+  try {
+    const { phone } = req.query;
+    if (!phone) {
+      return res.status(400).json(
+        error('VALIDATION_ERROR', '전화번호(phone)는 필수입니다.')
+      );
+    }
+
+    // 조회 시점에 만료 상태 정리
+    await query(
+      `UPDATE coupons c
+       LEFT JOIN reservations r ON c.reservation_id = r.id
+       SET c.status = 'expired',
+           c.updated_at = NOW()
+       WHERE c.status = 'active'
+         AND c.expires_at < NOW()
+         AND (
+           c.phone_snapshot = ?
+           OR (c.phone_snapshot IS NULL AND r.customer_phone = ?)
+         )`,
+      [phone, phone]
+    );
+
+    const rows = await query(
+      `SELECT
+         c.id, c.store_id, c.type, c.title, c.description,
+         c.discount_amount, c.discount_rate, c.min_spend, c.max_discount,
+         c.benefit_item, c.benefit_value,
+         c.status, c.issued_at, c.expires_at, c.used_at,
+         c.reservation_id, c.phone_snapshot,
+         COALESCE(c.store_id, r.store_id) AS resolved_store_id,
+         s.business_name AS store_name
+       FROM coupons c
+       LEFT JOIN reservations r ON c.reservation_id = r.id
+       LEFT JOIN stores s ON s.id = COALESCE(c.store_id, r.store_id)
+       WHERE
+         c.phone_snapshot = ?
+         OR (c.phone_snapshot IS NULL AND r.customer_phone = ?)
+       ORDER BY c.created_at DESC`,
+      [phone, phone]
+    );
+
+    const items = (rows || []).map((row) => ({
+      id: row.id,
+      store_id: row.store_id || row.resolved_store_id || null,
+      store_name: row.store_name || null,
+      type: row.type,
+      title: row.title,
+      description: row.description,
+      discount_amount: row.discount_amount,
+      discount_rate: row.discount_rate,
+      min_spend: row.min_spend,
+      max_discount: row.max_discount,
+      benefit_item: row.benefit_item,
+      benefit_value: row.benefit_value,
+      status: row.status,
+      issued_at: row.issued_at,
+      expires_at: row.expires_at,
+      used_at: row.used_at,
+      reservation_id: row.reservation_id,
+    }));
+
+    return res.status(200).json(
+      success({
+        coupons: items,
+        total_count: items.length,
+      })
+    );
+  } catch (err) {
+    console.error('[listPublicCouponsByPhone] error:', err);
+    return res.status(500).json(
+      error('INTERNAL_SERVER_ERROR', '서버 오류가 발생했습니다.', { message: err.message })
+    );
+  }
+};
