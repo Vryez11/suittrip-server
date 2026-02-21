@@ -244,6 +244,7 @@ CREATE TABLE IF NOT EXISTS reservations (
   start_time TIMESTAMP NOT NULL COMMENT '시작 시간',
   end_time TIMESTAMP COMMENT '종료 시간',
   request_time TIMESTAMP NOT NULL COMMENT '요청 시간',
+  confirmed_at TIMESTAMP COMMENT '예약 확정 시간',
   actual_start_time TIMESTAMP COMMENT '실제 시작 시간',
   actual_end_time TIMESTAMP COMMENT '실제 종료 시간',
 
@@ -271,7 +272,9 @@ CREATE TABLE IF NOT EXISTS reservations (
   FOREIGN KEY (storage_id) REFERENCES storages(id) ON DELETE SET NULL,
   INDEX idx_store_status (store_id, status),
   INDEX idx_store_date (store_id, start_time),
-  INDEX idx_customer (customer_id)
+  INDEX idx_customer (customer_id),
+  INDEX idx_res_phone_created (customer_phone, created_at),
+  INDEX idx_res_id_phone (id, customer_phone)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='예약';
 
 -- ============================================================================
@@ -736,6 +739,7 @@ CREATE TABLE IF NOT EXISTS coupons (
   used_at         DATETIME NULL COMMENT '사용 시각',
 
   reservation_id  VARCHAR(255) NULL COMMENT '연관 예약 ID',
+  phone_snapshot  VARCHAR(20) NULL COMMENT '발급 시점 고객 전화번호 스냅샷',
   payment_id      BIGINT NULL COMMENT '연관 결제 ID',
   created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '생성일시',
   updated_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '수정일시',
@@ -744,6 +748,7 @@ CREATE TABLE IF NOT EXISTS coupons (
   INDEX idx_coupons_store_type (store_id, type),
   INDEX idx_coupons_expires (expires_at),
   INDEX idx_coupons_reservation (reservation_id),
+  INDEX idx_coupons_phone_snapshot (phone_snapshot),
   INDEX idx_coupons_payment (payment_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='고객 쿠폰';
 
