@@ -91,7 +91,6 @@ import customerAuthRoutes from './routes/customerAuthRoutes.js';
 import customerReservationRoutes from './routes/customerReservationRoutes.js';
 import customerCouponRoutes from './routes/customerCouponRoutes.js';
 import storeCouponPolicyRoutes from './routes/storeCouponPolicyRoutes.js';
-import tRoutes from './routes/tRoutes.js';
 
 // 인증 라우트
 app.use('/api/auth', authRoutes);
@@ -144,9 +143,6 @@ app.use('/api/customer/coupons', customerCouponRoutes);
 
 // 매장 쿠폰 정책
 app.use('/api/store/coupons/policies', storeCouponPolicyRoutes);
-
-// landing public API
-app.use('/api/t', tRoutes);
 
 // ============================================================================
 // 404 에러 핸들러
