@@ -406,6 +406,37 @@ paths:
       responses:
         '200': { $ref: '#/components/responses/SuccessResponse' }
 
+  /api/store/pin:
+    put:
+      tags: [Store]
+      summary: 매장 PIN 저장/변경
+      security:
+        - StoreBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StorePinSetRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/store/pin/check:
+    post:
+      tags: [Store]
+      summary: 매장 PIN 검증
+      security:
+        - StoreBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StorePinCheckRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
   /api/store:
     get:
       tags: [Store]
@@ -1425,6 +1456,24 @@ components:
           type: string
           enum: [open, closed, temporarily_closed]
         reason: { type: string }
+
+    StorePinSetRequest:
+      type: object
+      required: [pin]
+      properties:
+        pin:
+          type: string
+          pattern: '^[0-9]{4}$'
+          example: '1234'
+
+    StorePinCheckRequest:
+      type: object
+      required: [pin]
+      properties:
+        pin:
+          type: string
+          pattern: '^[0-9]{4}$'
+          example: '1234'
 
     StoreInfoUpdateRequest:
       type: object

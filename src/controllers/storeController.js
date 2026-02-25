@@ -5,6 +5,11 @@
 import { success, error } from '../utils/response.js';
 import { query } from '../config/database.js';
 import { v4 as uuidv4 } from 'uuid';
+import { hashPassword, comparePassword } from '../utils/password.js';
+
+const STORE_PIN_REGEX = /^[0-9]{4}$/;
+const MAX_PIN_FAILURES = 5;
+const PIN_LOCK_MINUTES = 10;
 
 // ========================================================================
 // 보관함 설정과 storages 테이블 동기화
@@ -141,6 +146,163 @@ const syncStoragesFromSettings = async (storeId, storageSettings = {}) => {
       storeId,
       cfg.type,
     ]);
+  }
+};
+
+/**
+ * 매장 PIN 저장/변경
+ * PUT /api/store/pin
+ */
+export const setStorePin = async (req, res) => {
+  try {
+    const storeId = req.storeId;
+    const { pin } = req.body || {};
+
+    if (!pin || !STORE_PIN_REGEX.test(String(pin))) {
+      return res.status(400).json(
+        error('VALIDATION_ERROR', 'PIN은 4자리 숫자여야 합니다.', {
+          field: 'pin',
+          format: '####',
+        })
+      );
+    }
+
+    const pinHash = await hashPassword(String(pin));
+
+    await query(
+      `UPDATE stores
+       SET store_pin_hash = ?,
+           store_pin_updated_at = NOW(),
+           store_pin_failed_count = 0,
+           store_pin_locked_until = NULL,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [pinHash, storeId]
+    );
+
+    const rows = await query(
+      `SELECT id, store_pin_updated_at
+       FROM stores
+       WHERE id = ?
+       LIMIT 1`,
+      [storeId]
+    );
+
+    return res.json(
+      success(
+        {
+          storeId: rows[0]?.id || storeId,
+          pinSet: true,
+          pinUpdatedAt: rows[0]?.store_pin_updated_at || null,
+        },
+        '매장 PIN이 저장되었습니다'
+      )
+    );
+  } catch (err) {
+    console.error('매장 PIN 저장 중 에러:', err);
+    return res.status(500).json(
+      error('INTERNAL_ERROR', '서버 오류가 발생했습니다', {
+        message: err.message,
+      })
+    );
+  }
+};
+
+/**
+ * 매장 PIN 검증
+ * POST /api/store/pin/check
+ */
+export const checkStorePin = async (req, res) => {
+  try {
+    const storeId = req.storeId;
+    const { pin } = req.body || {};
+
+    if (!pin || !STORE_PIN_REGEX.test(String(pin))) {
+      return res.status(400).json(
+        error('VALIDATION_ERROR', 'PIN은 4자리 숫자여야 합니다.', {
+          field: 'pin',
+          format: '####',
+        })
+      );
+    }
+
+    const rows = await query(
+      `SELECT id, store_pin_hash, store_pin_failed_count, store_pin_locked_until
+       FROM stores
+       WHERE id = ?
+       LIMIT 1`,
+      [storeId]
+    );
+
+    if (!rows || rows.length === 0) {
+      return res.status(404).json(error('STORE_NOT_FOUND', '점포를 찾을 수 없습니다.'));
+    }
+
+    const store = rows[0];
+
+    if (!store.store_pin_hash) {
+      return res.status(400).json(error('STORE_PIN_NOT_SET', '매장 PIN이 설정되어 있지 않습니다.'));
+    }
+
+    if (store.store_pin_locked_until && new Date(store.store_pin_locked_until) > new Date()) {
+      return res.status(401).json(
+        error('PIN_LOCKED', 'PIN 입력이 잠겼습니다. 잠시 후 다시 시도해주세요.', {
+          lockedUntil: store.store_pin_locked_until,
+        })
+      );
+    }
+
+    const matched = await comparePassword(String(pin), store.store_pin_hash);
+
+    if (!matched) {
+      const nextFailedCount = Number(store.store_pin_failed_count || 0) + 1;
+      const shouldLock = nextFailedCount >= MAX_PIN_FAILURES;
+
+      await query(
+        `UPDATE stores
+         SET store_pin_failed_count = ?,
+             store_pin_locked_until = CASE
+               WHEN ? THEN DATE_ADD(NOW(), INTERVAL ? MINUTE)
+               ELSE NULL
+             END,
+             updated_at = NOW()
+         WHERE id = ?`,
+        [nextFailedCount, shouldLock ? 1 : 0, PIN_LOCK_MINUTES, storeId]
+      );
+
+      const remainingAttempts = Math.max(MAX_PIN_FAILURES - nextFailedCount, 0);
+      return res.status(401).json(
+        error('PIN_MISMATCH', 'PIN이 일치하지 않습니다.', {
+          remainingAttempts,
+        })
+      );
+    }
+
+    await query(
+      `UPDATE stores
+       SET store_pin_failed_count = 0,
+           store_pin_locked_until = NULL,
+           updated_at = NOW()
+       WHERE id = ?`,
+      [storeId]
+    );
+
+    return res.json(
+      success(
+        {
+          storeId,
+          matched: true,
+        },
+        'PIN 확인에 성공했습니다'
+      )
+    );
+  } catch (err) {
+    console.error('매장 PIN 확인 중 에러:', err);
+    return res.status(500).json(
+      error('INTERNAL_ERROR', '서버 오류가 발생했습니다', {
+        message: err.message,
+      })
+    );
   }
 };
 

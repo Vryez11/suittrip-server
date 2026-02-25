@@ -6,6 +6,8 @@ import express from 'express';
 import {
   getStoreStatus,
   updateStoreStatus,
+  setStorePin,
+  checkStorePin,
   getStoreInfo,
   updateStoreInfo,
   getStoreSettings,
@@ -23,6 +25,8 @@ router.get('/status', getStoreStatus);
 router.put('/status', updateStoreStatus);
 router.post('/open', updateStoreStatus); // Flutter 앱 호환성을 위한 alias
 router.post('/close', updateStoreStatus); // Flutter 앱 호환성을 위한 alias
+router.put('/pin', setStorePin);
+router.post('/pin/check', checkStorePin);
 
 // 점포 정보
 router.get('/', getStoreInfo);
