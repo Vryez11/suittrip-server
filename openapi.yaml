@@ -1,0 +1,1561 @@
+openapi: 3.0.3
+info:
+  title: Suittrip Server API
+  version: 1.0.0
+  description: |
+    Suittrip 백엔드 API 명세서입니다.
+    - 기준: 현재 src/app.js에 실제 마운트된 라우트
+    - /api/t 라우트는 제거된 상태
+servers:
+  - url: http://localhost:3000
+    description: Local
+  - url: https://api.lifeistravel.io
+    description: Production
+tags:
+  - { name: Health }
+  - { name: Store Auth }
+  - { name: Customer Auth }
+  - { name: Customer Stores }
+  - { name: Customer Reservations }
+  - { name: Customer Coupons }
+  - { name: Store }
+  - { name: Store Coupon Policies }
+  - { name: Storages }
+  - { name: Reservations }
+  - { name: Checkins }
+  - { name: Dashboard }
+  - { name: Statistics }
+  - { name: Notifications }
+  - { name: Reviews }
+  - { name: Payments }
+  - { name: Webhooks }
+  - { name: Settlements }
+
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: 헬스체크
+      responses:
+        '200':
+          description: 서버 정상
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: Server is running }
+                  timestamp: { type: string, format: date-time }
+                  database: { type: string, example: connected }
+                  environment: { type: string, example: development }
+                  version: { type: string, example: 1.0.0 }
+
+  /api/auth/email/send-verification:
+    post:
+      tags: [Store Auth]
+      summary: 이메일 인증코드 발송
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailSendVerificationRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/auth/email/verify-code:
+    post:
+      tags: [Store Auth]
+      summary: 이메일 인증코드 검증
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EmailVerifyCodeRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/auth/register:
+    post:
+      tags: [Store Auth]
+      summary: 점포 회원가입
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StoreRegisterRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/auth/login:
+    post:
+      tags: [Store Auth]
+      summary: 점포 로그인
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StoreLoginRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/auth/logout:
+    post:
+      tags: [Store Auth]
+      summary: 점포 로그아웃
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshTokenRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/auth/refresh:
+    post:
+      tags: [Store Auth]
+      summary: 점포 Access Token 갱신
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshTokenRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /auth/social-login:
+    post:
+      tags: [Customer Auth]
+      summary: 고객 소셜 로그인
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerSocialLoginRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /auth/signup:
+    post:
+      tags: [Customer Auth]
+      summary: 고객 가입 완료(온보딩)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CustomerSignupRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /auth/refresh:
+    post:
+      tags: [Customer Auth]
+      summary: 고객 Access Token 갱신
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshTokenRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /auth/logout:
+    post:
+      tags: [Customer Auth]
+      summary: 고객 로그아웃
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RefreshTokenRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /auth/me:
+    get:
+      tags: [Customer Auth]
+      summary: 고객 내 정보 조회
+      security:
+        - CustomerBearerAuth: []
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/customer/stores:
+    get:
+      tags: [Customer Stores]
+      summary: 고객용 매장 목록 조회
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - in: query
+          name: keyword
+          schema: { type: string }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/customer/stores/{storeId}:
+    get:
+      tags: [Customer Stores]
+      summary: 고객용 매장 상세 조회
+      parameters:
+        - $ref: '#/components/parameters/StoreIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/customer/reservations:
+    get:
+      tags: [Customer Reservations]
+      summary: 고객 예약 목록 조회
+      security:
+        - CustomerBearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+        - in: query
+          name: storeId
+          schema: { type: string }
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+    post:
+      tags: [Customer Reservations]
+      summary: 고객 예약 생성
+      security:
+        - CustomerBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReservationCreateRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/customer/reservations/{id}:
+    get:
+      tags: [Customer Reservations]
+      summary: 고객 예약 단건 조회
+      security:
+        - CustomerBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/customer/reservations/{id}/checkout:
+    put:
+      tags: [Customer Reservations]
+      summary: 고객 체크아웃 처리
+      security:
+        - CustomerBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/customer/coupons/claim:
+    post:
+      tags: [Customer Coupons]
+      summary: 고객 쿠폰 수동 발급
+      security:
+        - CustomerBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CouponClaimRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/customer/coupons:
+    get:
+      tags: [Customer Coupons]
+      summary: 고객 쿠폰 목록 조회
+      security:
+        - CustomerBearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string, enum: [active, used, expired] }
+        - in: query
+          name: type
+          schema: { type: string, enum: [payment_discount, store_benefit] }
+        - in: query
+          name: storeId
+          schema: { type: string }
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/customer/coupons/stats:
+    get:
+      tags: [Customer Coupons]
+      summary: 고객 쿠폰 통계 조회
+      security:
+        - CustomerBearerAuth: []
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '401': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/customer/coupons/{id}:
+    get:
+      tags: [Customer Coupons]
+      summary: 고객 쿠폰 상세 조회
+      security:
+        - CustomerBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CouponIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/customer/coupons/{id}/use:
+    post:
+      tags: [Customer Coupons]
+      summary: 고객 쿠폰 사용 처리
+      security:
+        - CustomerBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CouponIdPath'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CouponUseRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '403': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/store/status:
+    get:
+      tags: [Store]
+      summary: 매장 상태 조회
+      security:
+        - StoreBearerAuth: []
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+    put:
+      tags: [Store]
+      summary: 매장 상태 변경
+      security:
+        - StoreBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StoreStatusUpdateRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/store/open:
+    post:
+      tags: [Store]
+      summary: 매장 오픈(alias)
+      security:
+        - StoreBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StoreStatusUpdateRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/store/close:
+    post:
+      tags: [Store]
+      summary: 매장 클로즈(alias)
+      security:
+        - StoreBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StoreStatusUpdateRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/store:
+    get:
+      tags: [Store]
+      summary: 매장 기본 정보 조회
+      security:
+        - StoreBearerAuth: []
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    put:
+      tags: [Store]
+      summary: 매장 기본 정보 수정
+      security:
+        - StoreBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StoreInfoUpdateRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/store/settings:
+    get:
+      tags: [Store]
+      summary: 매장 설정 조회
+      security:
+        - StoreBearerAuth: []
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+    put:
+      tags: [Store]
+      summary: 매장 설정 수정(운영/보관함/알림/카테고리)
+      security:
+        - StoreBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StoreSettingsUpdateRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/store/coupons/policies:
+    post:
+      tags: [Store Coupon Policies]
+      summary: 쿠폰 정책 생성
+      security:
+        - StoreBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CouponPolicyCreateRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+    get:
+      tags: [Store Coupon Policies]
+      summary: 쿠폰 정책 목록 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - in: query
+          name: enabled
+          schema: { type: boolean }
+        - in: query
+          name: type
+          schema: { type: string, enum: [payment_discount, store_benefit] }
+        - in: query
+          name: autoIssueOn
+          schema: { type: string, enum: [manual_claim, signup, checkin_completed] }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/store/coupons/policies/{id}:
+    get:
+      tags: [Store Coupon Policies]
+      summary: 쿠폰 정책 상세 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PolicyIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    put:
+      tags: [Store Coupon Policies]
+      summary: 쿠폰 정책 수정
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PolicyIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CouponPolicyUpdateRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    delete:
+      tags: [Store Coupon Policies]
+      summary: 쿠폰 정책 삭제
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PolicyIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/storages:
+    get:
+      tags: [Storages]
+      summary: 보관함 목록 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: type
+          schema: { type: string }
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+    post:
+      tags: [Storages]
+      summary: 보관함 생성
+      security:
+        - StoreBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StorageCreateRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/storages/{id}:
+    get:
+      tags: [Storages]
+      summary: 보관함 단건 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StorageIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    put:
+      tags: [Storages]
+      summary: 보관함 수정
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StorageIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/StorageUpdateRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    delete:
+      tags: [Storages]
+      summary: 보관함 삭제
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/StorageIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/reservations:
+    post:
+      tags: [Reservations]
+      summary: 예약 생성(매장)
+      security:
+        - StoreBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReservationCreateRequest' }
+      responses:
+        '201': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+    get:
+      tags: [Reservations]
+      summary: 예약 목록 조회(매장)
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: date
+          schema: { type: string, format: date }
+        - in: query
+          name: customerId
+          schema: { type: string }
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/reservations/{id}:
+    get:
+      tags: [Reservations]
+      summary: 예약 단건 조회(매장)
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/reservations/{id}/approve:
+    put:
+      tags: [Reservations]
+      summary: 예약 승인 + 보관함 자동 할당
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+        '409': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/reservations/{id}/reject:
+    put:
+      tags: [Reservations]
+      summary: 예약 거절
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/reservations/{id}/cancel:
+    put:
+      tags: [Reservations]
+      summary: 예약 취소
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/reservations/{id}/status:
+    put:
+      tags: [Reservations]
+      summary: 예약 상태 변경
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReservationStatusUpdateRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/reservations/{id}/checkin:
+    put:
+      tags: [Reservations]
+      summary: 매장 체크인 처리(in_progress)
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationIdPath'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReservationCheckinRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/checkins:
+    get:
+      tags: [Checkins]
+      summary: 현재 보관중인 짐 목록 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - in: query
+          name: status
+          schema: { type: string }
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/checkins/{id}:
+    get:
+      tags: [Checkins]
+      summary: 현재 보관중인 짐 단건 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/checkins/{id}/checkout:
+    put:
+      tags: [Checkins]
+      summary: 짐 체크아웃(픽업 완료)
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/dashboard/summary:
+    get:
+      tags: [Dashboard]
+      summary: 대시보드 요약
+      security:
+        - StoreBearerAuth: []
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/dashboard/stats:
+    get:
+      tags: [Dashboard]
+      summary: 대시보드 통계
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - in: query
+          name: period
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, yearly]
+            default: monthly
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/dashboard/realtime:
+    get:
+      tags: [Dashboard]
+      summary: 대시보드 실시간 데이터
+      security:
+        - StoreBearerAuth: []
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/statistics/daily:
+    get:
+      tags: [Statistics]
+      summary: 일별 통계
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - in: query
+          name: startDate
+          schema: { type: string, format: date }
+        - in: query
+          name: endDate
+          schema: { type: string, format: date }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/statistics/monthly:
+    get:
+      tags: [Statistics]
+      summary: 월별 통계
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - in: query
+          name: year
+          schema: { type: integer }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/statistics/revenue:
+    get:
+      tags: [Statistics]
+      summary: 매출 통계
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - in: query
+          name: period
+          schema:
+            type: string
+            enum: [daily, weekly, monthly, yearly]
+            default: monthly
+        - in: query
+          name: startDate
+          schema: { type: string, format: date }
+        - in: query
+          name: endDate
+          schema: { type: string, format: date }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/notifications:
+    get:
+      tags: [Notifications]
+      summary: 알림 목록 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - in: query
+          name: isRead
+          schema: { type: boolean }
+        - in: query
+          name: type
+          schema: { type: string }
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/notifications/read-all:
+    put:
+      tags: [Notifications]
+      summary: 전체 알림 읽음 처리
+      security:
+        - StoreBearerAuth: []
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/notifications/{id}:
+    get:
+      tags: [Notifications]
+      summary: 알림 단건 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NotificationIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+    delete:
+      tags: [Notifications]
+      summary: 알림 삭제
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NotificationIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/notifications/{id}/read:
+    put:
+      tags: [Notifications]
+      summary: 알림 읽음 처리
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/NotificationIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/reviews:
+    get:
+      tags: [Reviews]
+      summary: 리뷰 목록 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - in: query
+          name: rating
+          schema: { type: integer, minimum: 1, maximum: 5 }
+        - in: query
+          name: status
+          schema: { type: string, enum: [pending, responded] }
+        - in: query
+          name: type
+          schema: { type: string, enum: [storage, store] }
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/reviews/{id}:
+    get:
+      tags: [Reviews]
+      summary: 리뷰 단건 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReviewIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/reviews/{id}/response:
+    post:
+      tags: [Reviews]
+      summary: 리뷰 답글 작성
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReviewIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewResponseRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+    put:
+      tags: [Reviews]
+      summary: 리뷰 답글 수정
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReviewIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewResponseRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+    delete:
+      tags: [Reviews]
+      summary: 리뷰 답글 삭제
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReviewIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/payments/prepare:
+    post:
+      tags: [Payments]
+      summary: 결제 준비(orderId 발급)
+      security:
+        - StoreBearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentPrepareRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/payments/confirm:
+    post:
+      tags: [Payments]
+      summary: 결제 승인(토스 confirm)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentConfirmRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/payments:
+    get:
+      tags: [Payments]
+      summary: 결제 목록 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - in: query
+          name: store_id
+          schema: { type: string }
+        - in: query
+          name: user_id
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string }
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/payments/{paymentKey}:
+    get:
+      tags: [Payments]
+      summary: 결제 단건 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PaymentKeyPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/payments/{paymentKey}/cancel:
+    post:
+      tags: [Payments]
+      summary: 결제 취소
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PaymentKeyPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PaymentCancelRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/webhooks/toss:
+    post:
+      tags: [Webhooks]
+      summary: 토스 웹훅 수신
+      description: 실패해도 200 응답을 반환하여 PG 재시도를 방지합니다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: 웹훅 처리 결과
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /api/settlements/run:
+    post:
+      tags: [Settlements]
+      summary: 정산 수동 실행
+      security:
+        - StoreBearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SettlementRunRequest' }
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '400': { $ref: '#/components/responses/ErrorResponse' }
+
+  /api/settlements:
+    get:
+      tags: [Settlements]
+      summary: 정산 내역 조회(점포별)
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/settlements/logs:
+    get:
+      tags: [Settlements]
+      summary: 정산 배치 로그 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/settlements/errors:
+    get:
+      tags: [Settlements]
+      summary: 정산 에러 로그 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/PageQuery'
+        - $ref: '#/components/parameters/LimitQuery'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+
+  /api/settlements/{id}:
+    get:
+      tags: [Settlements]
+      summary: 정산 상세 조회
+      security:
+        - StoreBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/SettlementIdPath'
+      responses:
+        '200': { $ref: '#/components/responses/SuccessResponse' }
+        '404': { $ref: '#/components/responses/ErrorResponse' }
+
+components:
+  securitySchemes:
+    StoreBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "점포 인증 토큰 (Authorization: Bearer <token>)"
+    CustomerBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "고객 인증 토큰 (Authorization: Bearer <token>)"
+
+  parameters:
+    PageQuery:
+      in: query
+      name: page
+      schema: { type: integer, minimum: 1, default: 1 }
+    LimitQuery:
+      in: query
+      name: limit
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    StoreIdPath:
+      in: path
+      name: storeId
+      required: true
+      schema: { type: string }
+    ReservationIdPath:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    CouponIdPath:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    PolicyIdPath:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    StorageIdPath:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    NotificationIdPath:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    ReviewIdPath:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+    PaymentKeyPath:
+      in: path
+      name: paymentKey
+      required: true
+      schema: { type: string }
+    SettlementIdPath:
+      in: path
+      name: id
+      required: true
+      schema: { type: string }
+
+  responses:
+    SuccessResponse:
+      description: 성공 응답
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/SuccessEnvelope'
+          examples:
+            default:
+              value:
+                success: true
+                data: {}
+                timestamp: '2026-02-25T10:00:00.000Z'
+                message: Success
+    ErrorResponse:
+      description: 에러 응답
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            default:
+              value:
+                success: false
+                error:
+                  code: VALIDATION_ERROR
+                  message: 유효하지 않은 요청입니다
+                  timestamp: '2026-02-25T10:00:00.000Z'
+                  details: {}
+
+  schemas:
+    SuccessEnvelope:
+      type: object
+      required: [success, data, timestamp]
+      properties:
+        success: { type: boolean, enum: [true] }
+        data:
+          type: object
+          additionalProperties: true
+        timestamp:
+          type: string
+          format: date-time
+        message:
+          type: string
+
+    ErrorEnvelope:
+      type: object
+      required: [success, error]
+      properties:
+        success: { type: boolean, enum: [false] }
+        error:
+          type: object
+          required: [code, message, timestamp]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            timestamp: { type: string, format: date-time }
+            details:
+              type: object
+              additionalProperties: true
+            statusCode:
+              type: integer
+
+    EmailSendVerificationRequest:
+      type: object
+      required: [email]
+      properties:
+        email: { type: string, format: email }
+
+    EmailVerifyCodeRequest:
+      type: object
+      required: [email, code]
+      properties:
+        email: { type: string, format: email }
+        code: { type: string, example: '123456' }
+
+    StoreRegisterRequest:
+      type: object
+      required: [email, password, businessName]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+        phoneNumber: { type: string }
+        businessNumber: { type: string }
+        businessName: { type: string }
+        representativeName: { type: string }
+        address: { type: string }
+        detailAddress: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+        businessType:
+          type: string
+          enum: [RESTAURANT, CAFE, HOTEL, OTHER]
+        description: { type: string }
+
+    StoreLoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken: { type: string }
+
+    CustomerSocialLoginRequest:
+      type: object
+      required: [provider, socialId, accessToken]
+      properties:
+        provider: { type: string, example: kakao }
+        accessToken: { type: string }
+        socialAccessToken: { type: string }
+        refreshToken: { type: string, description: provider refresh token }
+        socialId: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        profileImage: { type: string }
+        phoneNumber: { type: string }
+        birthDate: { type: string, format: date }
+        carrier: { type: string }
+        gender: { type: string, enum: [M, F] }
+        termsAgreed: { type: boolean }
+        privacyAgreed: { type: boolean }
+        locationAgreed: { type: boolean }
+        marketingAgreed: { type: boolean }
+
+    CustomerSignupRequest:
+      type: object
+      required: [provider]
+      properties:
+        provider: { type: string, example: kakao }
+        socialId: { type: string }
+        accessToken: { type: string }
+        socialAccessToken: { type: string }
+        userId: { type: string }
+        customerId: { type: string }
+        name: { type: string }
+        email: { type: string, format: email }
+        phoneNumber: { type: string }
+        profileImage: { type: string }
+        birthDate: { type: string, format: date }
+        carrier: { type: string }
+        gender: { type: string, enum: [M, F] }
+        termsAgreed: { type: boolean }
+        privacyAgreed: { type: boolean }
+        locationAgreed: { type: boolean }
+        marketingAgreed: { type: boolean }
+
+    ReservationCreateRequest:
+      type: object
+      required:
+        - storeId
+        - customerName
+        - phoneNumber
+        - startTime
+        - duration
+        - bagCount
+        - storageType
+      properties:
+        storeId: { type: string }
+        customerId: { type: string }
+        customerName: { type: string }
+        phoneNumber: { type: string }
+        email: { type: string, format: email }
+        startTime: { type: string, format: date-time }
+        endTime: { type: string, format: date-time }
+        duration: { type: integer, minimum: 1 }
+        price: { type: integer, minimum: 0 }
+        bagCount: { type: integer, minimum: 1 }
+        message: { type: string }
+        specialRequests: { type: string }
+        luggageImageUrls:
+          type: array
+          items: { type: string }
+        paymentMethod: { type: string, default: card }
+        requestTime: { type: string, format: date-time }
+        storageType:
+          type: string
+          enum: [s, m, l, xl, special, refrigeration]
+
+    ReservationStatusUpdateRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          example: confirmed
+
+    ReservationCheckinRequest:
+      type: object
+      properties:
+        photoUrls:
+          type: array
+          items: { type: string }
+
+    CouponClaimRequest:
+      type: object
+      required: [type]
+      properties:
+        customerId: { type: string }
+        type:
+          type: string
+          enum: [payment_discount, store_benefit]
+        storeId: { type: string, nullable: true }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        discountAmount: { type: integer, nullable: true }
+        discountRate: { type: integer, nullable: true }
+        minSpend: { type: integer, nullable: true }
+        maxDiscount: { type: integer, nullable: true }
+        benefitItem: { type: string, nullable: true }
+        benefitValue: { type: string, nullable: true }
+        validityDays: { type: integer, default: 7 }
+
+    CouponUseRequest:
+      type: object
+      properties:
+        storeId: { type: string }
+
+    StoreStatusUpdateRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [open, closed, temporarily_closed]
+        reason: { type: string }
+
+    StoreInfoUpdateRequest:
+      type: object
+      properties:
+        name: { type: string }
+        phoneNumber: { type: string }
+        address: { type: string }
+        detailAddress: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+        description: { type: string }
+        hasCompletedSetup: { type: boolean }
+
+    StoreSettingsUpdateRequest:
+      type: object
+      description: Flutter StoreSettings 모델 구조를 그대로 받는 유연한 스키마
+      properties:
+        basicInfo:
+          type: object
+          additionalProperties: true
+        operationSettings:
+          type: object
+          additionalProperties: true
+        storageSettings:
+          type: object
+          additionalProperties: true
+        notificationSettings:
+          type: object
+          additionalProperties: true
+        categories:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    CouponPolicyCreateRequest:
+      type: object
+      required: [name, type]
+      properties:
+        name: { type: string }
+        type:
+          type: string
+          enum: [payment_discount, store_benefit]
+        discountAmount: { type: integer, nullable: true }
+        discountRate: { type: integer, nullable: true }
+        minSpend: { type: integer, nullable: true }
+        maxDiscount: { type: integer, nullable: true }
+        benefitItem: { type: string, nullable: true }
+        benefitValue: { type: string, nullable: true }
+        autoIssueOn:
+          type: string
+          enum: [manual_claim, signup, checkin_completed]
+          default: manual_claim
+        validityDays: { type: integer, default: 7 }
+        enabled: { type: boolean, default: true }
+
+    CouponPolicyUpdateRequest:
+      allOf:
+        - $ref: '#/components/schemas/CouponPolicyCreateRequest'
+
+    StorageCreateRequest:
+      type: object
+      required: [number, type, pricing]
+      properties:
+        number: { type: string }
+        type:
+          type: string
+          enum: [s, m, l, xl, special, refrigeration]
+        width: { type: integer }
+        height: { type: integer }
+        depth: { type: integer }
+        pricing: { type: integer, minimum: 0 }
+        floor: { type: integer }
+        section: { type: string }
+        row: { type: integer }
+        column: { type: integer }
+
+    StorageUpdateRequest:
+      type: object
+      properties:
+        number: { type: string }
+        type:
+          type: string
+          enum: [s, m, l, xl, special, refrigeration]
+        status:
+          type: string
+          enum: [available, occupied, maintenance]
+        width: { type: integer }
+        height: { type: integer }
+        depth: { type: integer }
+        pricing: { type: integer, minimum: 0 }
+        floor: { type: integer }
+        section: { type: string }
+        row: { type: integer }
+        column: { type: integer }
+
+    ReviewResponseRequest:
+      type: object
+      required: [response]
+      properties:
+        response: { type: string }
+
+    PaymentPrepareRequest:
+      type: object
+      required: [store_id, user_id, amount, order_name]
+      properties:
+        store_id: { type: string }
+        user_id: { type: string }
+        amount: { type: integer, minimum: 100 }
+        order_name: { type: string }
+        customer_email: { type: string, format: email }
+        customer_name: { type: string }
+        reservation_id: { type: string }
+
+    PaymentConfirmRequest:
+      type: object
+      required: [paymentKey, orderId, amount]
+      properties:
+        paymentKey: { type: string }
+        orderId: { type: string }
+        amount: { type: integer, minimum: 0 }
+
+    PaymentCancelRequest:
+      type: object
+      required: [cancelReason]
+      properties:
+        cancelReason: { type: string }
+
+    SettlementRunRequest:
+      type: object
+      properties:
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        dryRun: { type: boolean, default: false }
