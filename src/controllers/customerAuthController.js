@@ -100,7 +100,10 @@ export const socialLogin = async (req, res) => {
     let customerId;
     let isNewUser = false;
 
-    if (existing && existing.length > 0) {
+    // 탈퇴 회원인지 체크 (name='탈퇴회원'이면 신규 가입으로 처리)
+    const isWithdrawn = existing && existing.length > 0 && existing[0].name === '탈퇴회원';
+
+    if (existing && existing.length > 0 && !isWithdrawn) {
       customerId = existing[0].id;
       await query(
         `UPDATE customers
@@ -134,6 +137,15 @@ export const socialLogin = async (req, res) => {
       );
     } else {
       isNewUser = true;
+
+      // 탈퇴 회원이면 기존 레코드 정리
+      if (isWithdrawn) {
+        const oldId = existing[0].id;
+        await query('DELETE FROM customer_refresh_tokens WHERE customer_id = ?', [oldId]);
+        await query('DELETE FROM customer_auth_providers WHERE customer_id = ?', [oldId]);
+        await query('DELETE FROM customers WHERE id = ?', [oldId]);
+      }
+
       customerId = `cust_${uuidv4()}`;
       await query(
         `INSERT INTO customers (id, provider_type, provider_id, name, email, phone_number, birth_date, carrier, gender, profile_image_url, terms_agreed, privacy_agreed, location_agreed, marketing_agreed, last_login_at, created_at, updated_at)
