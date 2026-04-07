@@ -90,6 +90,7 @@ import customerStoreRoutes from './routes/customerStoreRoutes.js';
 import customerAuthRoutes from './routes/customerAuthRoutes.js';
 import customerReservationRoutes from './routes/customerReservationRoutes.js';
 import customerCouponRoutes from './routes/customerCouponRoutes.js';
+import customerPaymentRoutes from './routes/customerPaymentRoutes.js';
 import storeCouponPolicyRoutes from './routes/storeCouponPolicyRoutes.js';
 
 // 인증 라우트
@@ -140,6 +141,9 @@ app.use('/api/customer/reservations', customerReservationRoutes);
 
 // 고객용 쿠폰
 app.use('/api/customer/coupons', customerCouponRoutes);
+
+// 고객용 결제
+app.use('/api/customer/payments', customerPaymentRoutes);
 
 // 매장 쿠폰 정책
 app.use('/api/store/coupons/policies', storeCouponPolicyRoutes);

@@ -21,13 +21,16 @@ export const preparePayment = async (req, res) => {
   try {
     const {
       store_id,
-      user_id,
+      user_id: bodyUserId,
       amount,
       order_name,
       customer_email,
       customer_name,
       reservation_id,
     } = req.body;
+
+    // 고객 인증 미들웨어에서 설정된 customerId 우선 사용
+    const user_id = req.customerId || bodyUserId;
 
     // 필수 필드 검증
     if (!store_id || !user_id || !amount || !order_name) {
