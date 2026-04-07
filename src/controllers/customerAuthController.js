@@ -469,6 +469,46 @@ export const logoutCustomer = async (req, res) => {
   }
 };
 
+/**
+ * 회원탈퇴 (계정 삭제)
+ * DELETE /auth/withdraw
+ */
+export const withdrawCustomer = async (req, res) => {
+  try {
+    const customerId = req.customerId;
+    if (!customerId) {
+      return res.status(401).json(error('AUTH_REQUIRED', '로그인이 필요합니다'));
+    }
+
+    // 리프레시 토큰 삭제
+    await query('DELETE FROM customer_refresh_tokens WHERE customer_id = ?', [customerId]);
+
+    // 인증 제공자 링크 삭제
+    await query('DELETE FROM customer_auth_providers WHERE customer_id = ?', [customerId]);
+
+    // 고객 데이터 소프트 삭제 (개인정보 익명화)
+    await query(
+      `UPDATE customers
+         SET name = '탈퇴회원',
+             email = NULL,
+             phone_number = NULL,
+             birth_date = NULL,
+             carrier = NULL,
+             gender = NULL,
+             profile_image_url = NULL,
+             provider_id = CONCAT('withdrawn_', id),
+             updated_at = NOW()
+       WHERE id = ?`,
+      [customerId]
+    );
+
+    return res.json(success({ message: '회원탈퇴가 완료되었습니다' }));
+  } catch (err) {
+    console.error('[withdrawCustomer] error:', err);
+    return res.status(500).json(error('INTERNAL_ERROR', '서버 오류가 발생했습니다', { message: err.message }));
+  }
+};
+
 export const getMe = async (req, res) => {
   try {
     const authHeader = req.headers.authorization || '';
