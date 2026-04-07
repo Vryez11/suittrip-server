@@ -8,7 +8,7 @@ import { error } from '../utils/response.js';
 
 dotenv.config();
 
-const ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_TOKEN_SECRET || 'your-secret-key';
+const ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_TOKEN_SECRET;
 
 export const authenticateCustomer = async (req, res, next) => {
   try {

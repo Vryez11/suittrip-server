@@ -10,6 +10,14 @@ import { testConnection } from './config/database.js';
 // 환경변수 로드
 dotenv.config();
 
+// 필수 환경변수 검증
+const requiredEnvVars = ['TOSS_CLIENT_KEY', 'TOSS_SECRET_KEY', 'JWT_ACCESS_TOKEN_SECRET', 'JWT_REFRESH_TOKEN_SECRET'];
+const missingVars = requiredEnvVars.filter(v => !process.env[v]);
+if (missingVars.length > 0) {
+  console.error(`[FATAL] Missing required env vars: ${missingVars.join(', ')}`);
+  process.exit(1);
+}
+
 // Express 앱 생성
 const app = express();
 
