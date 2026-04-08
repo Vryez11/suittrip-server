@@ -103,6 +103,7 @@ import customerDeviceRoutes from './routes/customerDeviceRoutes.js';
 import customerReviewRoutes from './routes/customerReviewRoutes.js';
 import customerSupportRoutes from './routes/customerSupportRoutes.js';
 import customerPaymentMethodRoutes from './routes/customerPaymentMethodRoutes.js';
+import customerPhoneRoutes from './routes/customerPhoneRoutes.js';
 import storeCouponPolicyRoutes from './routes/storeCouponPolicyRoutes.js';
 
 // 인증 라우트
@@ -167,6 +168,9 @@ app.use('/api/customer', customerSupportRoutes);
 
 // 고객용 결제수단 관리
 app.use('/api/customer/payment-methods', customerPaymentMethodRoutes);
+
+// 고객 전화번호 변경/인증
+app.use('/api/customer/phone', customerPhoneRoutes);
 
 // 매장 쿠폰 정책
 app.use('/api/store/coupons/policies', storeCouponPolicyRoutes);
