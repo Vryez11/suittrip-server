@@ -559,3 +559,84 @@ export const getMe = async (req, res) => {
     return res.status(500).json(error('INTERNAL_ERROR', '서버 오류가 발생했습니다', { message: err.message }));
   }
 };
+
+/**
+ * 고객 알림 설정 조회
+ * GET /api/auth/notification-settings
+ * - customers 테이블에 push_enabled 등 컬럼이 없으면 기본값 반환
+ */
+export const getNotificationSettings = async (req, res) => {
+  try {
+    const customerId = req.customerId;
+    const [rows] = await query(
+      `SELECT push_enabled, email_enabled, sms_enabled, marketing_enabled
+       FROM customers WHERE id = ?`,
+      [customerId]
+    );
+
+    if (!rows || rows.length === 0) {
+      return res.status(404).json(error('NOT_FOUND', '고객 정보를 찾을 수 없습니다'));
+    }
+
+    const user = rows[0];
+    return res.json(success({
+      pushEnabled: user.push_enabled ?? true,
+      emailEnabled: user.email_enabled ?? true,
+      smsEnabled: user.sms_enabled ?? false,
+      marketingEnabled: user.marketing_enabled ?? false,
+    }));
+  } catch (err) {
+    console.error('[getNotificationSettings] error:', err);
+    // 컬럼이 없는 경우 기본값 반환
+    if (err.code === 'ER_BAD_FIELD_ERROR') {
+      return res.json(success({
+        pushEnabled: true,
+        emailEnabled: true,
+        smsEnabled: false,
+        marketingEnabled: false,
+      }));
+    }
+    return res.status(500).json(error('INTERNAL_ERROR', '서버 오류가 발생했습니다'));
+  }
+};
+
+/**
+ * 고객 알림 설정 수정
+ * PUT /api/auth/notification-settings
+ */
+export const updateNotificationSettings = async (req, res) => {
+  try {
+    const customerId = req.customerId;
+    const { pushEnabled, emailEnabled, smsEnabled, marketingEnabled } = req.body;
+
+    await query(
+      `UPDATE customers SET
+        push_enabled = ?,
+        email_enabled = ?,
+        sms_enabled = ?,
+        marketing_enabled = ?,
+        updated_at = NOW()
+       WHERE id = ?`,
+      [
+        pushEnabled ?? true,
+        emailEnabled ?? true,
+        smsEnabled ?? false,
+        marketingEnabled ?? false,
+        customerId,
+      ]
+    );
+
+    return res.json(success({
+      pushEnabled: pushEnabled ?? true,
+      emailEnabled: emailEnabled ?? true,
+      smsEnabled: smsEnabled ?? false,
+      marketingEnabled: marketingEnabled ?? false,
+    }));
+  } catch (err) {
+    console.error('[updateNotificationSettings] error:', err);
+    if (err.code === 'ER_BAD_FIELD_ERROR') {
+      return res.status(400).json(error('DB_MIGRATION_NEEDED', 'customers 테이블에 알림 설정 컬럼이 필요합니다. CHANGELOG-jaerok.md 참고'));
+    }
+    return res.status(500).json(error('INTERNAL_ERROR', '서버 오류가 발생했습니다'));
+  }
+};
