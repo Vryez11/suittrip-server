@@ -561,6 +561,56 @@ export const getMe = async (req, res) => {
 };
 
 /**
+ * 프로필 수정
+ * PATCH /api/customer/auth/me
+ */
+export const updateMe = async (req, res) => {
+  try {
+    const customerId = req.customerId;
+    const { name, email, phoneNumber, profileImage } = req.body;
+
+    // 변경할 필드가 없으면 에러
+    if (!name && !email && !phoneNumber && profileImage === undefined) {
+      return res.status(400).json(error('VALIDATION_ERROR', '변경할 필드가 필요합니다'));
+    }
+
+    await query(
+      `UPDATE customers SET
+        name = COALESCE(?, name),
+        email = COALESCE(?, email),
+        phone_number = COALESCE(?, phone_number),
+        profile_image_url = COALESCE(?, profile_image_url),
+        updated_at = NOW()
+       WHERE id = ?`,
+      [name || null, email || null, phoneNumber || null, profileImage ?? null, customerId]
+    );
+
+    const rows = await query(
+      'SELECT id, email, name, phone_number, provider_type, profile_image_url FROM customers WHERE id = ? LIMIT 1',
+      [customerId]
+    );
+    if (!rows || rows.length === 0) {
+      return res.status(404).json(error('USER_NOT_FOUND', '사용자를 찾을 수 없습니다'));
+    }
+
+    const user = rows[0];
+    return res.json(
+      success({
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        phoneNumber: user.phone_number,
+        provider: user.provider_type,
+        profileImage: user.profile_image_url,
+      }, '프로필이 수정되었습니다')
+    );
+  } catch (err) {
+    console.error('[updateMe] error:', err);
+    return res.status(500).json(error('INTERNAL_ERROR', '서버 오류가 발생했습니다', { message: err.message }));
+  }
+};
+
+/**
  * 고객 알림 설정 조회
  * GET /api/auth/notification-settings
  * - customers 테이블에 push_enabled 등 컬럼이 없으면 기본값 반환

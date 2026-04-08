@@ -99,6 +99,10 @@ import customerAuthRoutes from './routes/customerAuthRoutes.js';
 import customerReservationRoutes from './routes/customerReservationRoutes.js';
 import customerCouponRoutes from './routes/customerCouponRoutes.js';
 import customerPaymentRoutes from './routes/customerPaymentRoutes.js';
+import customerDeviceRoutes from './routes/customerDeviceRoutes.js';
+import customerReviewRoutes from './routes/customerReviewRoutes.js';
+import customerSupportRoutes from './routes/customerSupportRoutes.js';
+import customerPaymentMethodRoutes from './routes/customerPaymentMethodRoutes.js';
 import storeCouponPolicyRoutes from './routes/storeCouponPolicyRoutes.js';
 
 // 인증 라우트
@@ -140,9 +144,8 @@ app.use('/api/settlements', settlementRoutes);
 // 고객용 스토어 조회
 app.use('/api/customer/stores', customerStoreRoutes);
 
-// 고객용 인증 (프론트 기본 설정에 맞춰 /auth 경로도 노출)
-app.use('/auth', customerAuthRoutes);
-app.use('/api/auth', customerAuthRoutes);
+// 고객용 인증
+app.use('/api/customer/auth', customerAuthRoutes);
 
 // 고객용 예약
 app.use('/api/customer/reservations', customerReservationRoutes);
@@ -152,6 +155,18 @@ app.use('/api/customer/coupons', customerCouponRoutes);
 
 // 고객용 결제
 app.use('/api/customer/payments', customerPaymentRoutes);
+
+// 고객용 디바이스(푸시토큰)
+app.use('/api/customer/devices', customerDeviceRoutes);
+
+// 고객용 리뷰
+app.use('/api/customer/reviews', customerReviewRoutes);
+
+// 고객용 FAQ + 문의
+app.use('/api/customer', customerSupportRoutes);
+
+// 고객용 결제수단 관리
+app.use('/api/customer/payment-methods', customerPaymentMethodRoutes);
 
 // 매장 쿠폰 정책
 app.use('/api/store/coupons/policies', storeCouponPolicyRoutes);
