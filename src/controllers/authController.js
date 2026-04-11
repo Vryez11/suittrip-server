@@ -164,7 +164,9 @@ export const register = async (req, res) => {
     const {
       email,
       password,
-      phoneNumber,
+      phoneNumber,           // 사장님 개인 연락처
+      storePhoneNumber,      // 매장 대표 연락처 (고객 노출용)
+      wantsSmsNotification,  // 사장님 휴대폰 SMS 알림 수신 동의
       businessNumber,
       businessName,
       representativeName,
@@ -268,17 +270,19 @@ export const register = async (req, res) => {
     // 5. 점포 정보 저장
     await query(
       `INSERT INTO stores (
-        id, email, password_hash, phone_number,
+        id, email, password_hash, phone_number, store_phone_number, wants_sms_notification,
         business_number, business_name, representative_name,
         address, detail_address, latitude, longitude,
         business_type, description, has_completed_setup,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         storeId,
         email,
         passwordHash,
         phoneNumber || null,
+        storePhoneNumber || null,
+        Boolean(wantsSmsNotification),
         businessNumber || null,
         businessName,
         representativeName || null,
@@ -325,8 +329,8 @@ export const register = async (req, res) => {
 
     // 10. 생성된 store 정보 조회 (created_at, updated_at 포함)
     const createdStores = await query(
-      `SELECT id, email, phone_number, business_number,
-              business_name, representative_name, address, detail_address,
+      `SELECT id, email, phone_number, store_phone_number, wants_sms_notification,
+              business_number, business_name, representative_name, address, detail_address,
               latitude, longitude, business_type, description,
               has_completed_setup, created_at, updated_at
        FROM stores
@@ -350,6 +354,8 @@ export const register = async (req, res) => {
             email: createdStore.email,
             businessName: createdStore.business_name,
             phoneNumber: createdStore.phone_number,
+            storePhoneNumber: createdStore.store_phone_number,
+            wantsSmsNotification: Boolean(createdStore.wants_sms_notification),
             businessType: createdStore.business_type,
             hasCompletedSetup: Boolean(createdStore.has_completed_setup), // MySQL int -> boolean
             businessNumber: createdStore.business_number,
@@ -411,7 +417,7 @@ export const login = async (req, res) => {
     // 1. 사용자 조회
     const stores = await query(
       `SELECT
-        id, email, password_hash, phone_number,
+        id, email, password_hash, phone_number, store_phone_number, wants_sms_notification,
         business_number, business_name, representative_name,
         address, detail_address, latitude, longitude,
         business_type, description, has_completed_setup,
@@ -469,6 +475,8 @@ export const login = async (req, res) => {
             email: store.email,
             businessName: store.business_name,
             phoneNumber: store.phone_number,
+            storePhoneNumber: store.store_phone_number,
+            wantsSmsNotification: Boolean(store.wants_sms_notification),
             businessType: store.business_type,
             hasCompletedSetup: Boolean(store.has_completed_setup), // MySQL int(0/1) -> boolean 변환
             businessNumber: store.business_number,
