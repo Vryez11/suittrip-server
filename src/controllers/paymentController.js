@@ -13,12 +13,29 @@ import {
   updateReservationPaymentStatus,
 } from '../services/paymentService.js';
 
+const ensurePaymentEnv = (res, requiredKeys = []) => {
+  const missing = requiredKeys.filter((key) => !process.env[key]);
+  if (missing.length > 0) {
+    res.status(503).json(
+      error('PAYMENT_CONFIG_MISSING', '결제 시스템 환경변수가 설정되지 않았습니다', {
+        missing,
+      })
+    );
+    return false;
+  }
+  return true;
+};
+
 /**
  * 결제 준비
  * POST /api/payments/prepare
  */
 export const preparePayment = async (req, res) => {
   try {
+    if (!ensurePaymentEnv(res, ['TOSS_CLIENT_KEY'])) {
+      return;
+    }
+
     const {
       store_id,
       user_id: bodyUserId,
@@ -106,6 +123,10 @@ export const preparePayment = async (req, res) => {
  */
 export const confirmPayment = async (req, res) => {
   try {
+    if (!ensurePaymentEnv(res, ['TOSS_SECRET_KEY'])) {
+      return;
+    }
+
     const { paymentKey, orderId, amount } = req.body;
 
     // 필수 필드 검증
@@ -349,6 +370,10 @@ export const getPayments = async (req, res) => {
  */
 export const cancelPayment = async (req, res) => {
   try {
+    if (!ensurePaymentEnv(res, ['TOSS_SECRET_KEY'])) {
+      return;
+    }
+
     const { paymentKey } = req.params;
     const { cancelReason } = req.body;
 

@@ -11,11 +11,19 @@ import { testConnection } from './config/database.js';
 dotenv.config();
 
 // 필수 환경변수 검증
-const requiredEnvVars = ['TOSS_CLIENT_KEY', 'TOSS_SECRET_KEY', 'JWT_ACCESS_TOKEN_SECRET', 'JWT_REFRESH_TOKEN_SECRET'];
+const requiredEnvVars = ['JWT_ACCESS_TOKEN_SECRET', 'JWT_REFRESH_TOKEN_SECRET'];
 const missingVars = requiredEnvVars.filter(v => !process.env[v]);
 if (missingVars.length > 0) {
   console.error(`[FATAL] Missing required env vars: ${missingVars.join(', ')}`);
   process.exit(1);
+}
+
+// 결제 연동 환경변수 검증 (미설정 시 서버는 기동, 결제 API만 제한)
+const paymentEnvVars = ['TOSS_CLIENT_KEY', 'TOSS_SECRET_KEY'];
+const missingPaymentVars = paymentEnvVars.filter(v => !process.env[v]);
+if (missingPaymentVars.length > 0) {
+  console.warn(`[WARN] Missing payment env vars: ${missingPaymentVars.join(', ')}`);
+  console.warn('[WARN] Payment APIs may not work until these vars are configured.');
 }
 
 // Express 앱 생성
