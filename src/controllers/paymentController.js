@@ -21,13 +21,16 @@ export const preparePayment = async (req, res) => {
   try {
     const {
       store_id,
-      user_id,
+      user_id: bodyUserId,
       amount,
       order_name,
       customer_email,
       customer_name,
       reservation_id,
     } = req.body;
+
+    // 고객 인증 미들웨어에서 설정된 customerId 우선 사용
+    const user_id = req.customerId || bodyUserId;
 
     // 필수 필드 검증
     if (!store_id || !user_id || !amount || !order_name) {
@@ -145,6 +148,9 @@ export const confirmPayment = async (req, res) => {
 
     // 토스페이먼츠 결제 승인 API 호출
     const secretKey = process.env.TOSS_SECRET_KEY;
+    if (!secretKey) {
+      return res.status(500).json(error('CONFIG_ERROR', '결제 시스템이 설정되지 않았습니다'));
+    }
     const encodedKey = Buffer.from(secretKey + ':').toString('base64');
 
     const tossResponse = await axios.post(
@@ -181,6 +187,11 @@ export const confirmPayment = async (req, res) => {
         orderId,
       ]
     );
+
+    // 예약 상태도 함께 업데이트
+    if (payment.reservation_id) {
+      await updateReservationPaymentStatus(payment.reservation_id, 'paid');
+    }
 
     return res.status(200).json(
       success({
@@ -369,6 +380,9 @@ export const cancelPayment = async (req, res) => {
 
     // 토스페이먼츠 결제 취소 API 호출
     const secretKey = process.env.TOSS_SECRET_KEY;
+    if (!secretKey) {
+      return res.status(500).json(error('CONFIG_ERROR', '결제 시스템이 설정되지 않았습니다'));
+    }
     const encodedKey = Buffer.from(secretKey + ':').toString('base64');
 
     const tossResponse = await axios.post(
@@ -386,16 +400,21 @@ export const cancelPayment = async (req, res) => {
 
     // DB 업데이트 - 결제 취소
     await query(
-      `UPDATE payments 
+      `UPDATE payments
        SET status = ?, canceled_at = NOW(), updated_at = NOW()
        WHERE pg_payment_key = ?`,
       ['CANCELED', paymentKey]
     );
 
+    // 예약 상태도 함께 업데이트
+    if (payment.reservation_id) {
+      await updateReservationPaymentStatus(payment.reservation_id, 'refund');
+    }
+
     return res.status(200).json(
       success({
         message: '결제가 성공적으로 취소되었습니다',
-        canceledAt: tossResponse.data.cancels[0].canceledAt,
+        canceledAt: tossResponse?.data?.cancels?.[0]?.canceledAt || new Date().toISOString(),
       })
     );
   } catch (err) {

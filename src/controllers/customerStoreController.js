@@ -30,11 +30,13 @@ export const listStores = async (req, res) => {
     const normalizedLimit = Math.min(parseInt(limit, 10) || 20, 100);
 
     const params = [];
+    // 고객에게는 매장 대표 연락처만 노출. 신규 가입 매장은 store_phone_number,
+    // 마이그레이션 이전 기존 매장은 phone_number가 사실상 매장 연락처였으므로 폴백.
     let sql = `
       SELECT
         s.id,
         s.business_name,
-        s.phone_number,
+        COALESCE(s.store_phone_number, s.phone_number) AS phone_number,
         s.address,
         s.latitude,
         s.longitude
@@ -130,7 +132,7 @@ export const getStoreDetail = async (req, res) => {
       SELECT
         s.id,
         s.business_name,
-        s.phone_number,
+        COALESCE(s.store_phone_number, s.phone_number) AS phone_number,
         s.address,
         s.latitude,
         s.longitude

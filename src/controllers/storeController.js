@@ -446,7 +446,7 @@ export const getStoreInfo = async (req, res) => {
     // 점포 정보 조회
     const stores = await query(
       `SELECT
-        id, email, phone_number, business_number,
+        id, email, phone_number, store_phone_number, wants_sms_notification, business_number,
         business_name, representative_name, address, detail_address,
         latitude, longitude, business_type, description,
         has_completed_setup, created_at, updated_at
@@ -471,8 +471,9 @@ export const getStoreInfo = async (req, res) => {
           email: store.email,
           businessName: store.business_name,
           phoneNumber: store.phone_number,
+          storePhoneNumber: store.store_phone_number,
+          wantsSmsNotification: Boolean(store.wants_sms_notification),
           businessNumber: store.business_number,
-          businessName: store.business_name,
           representativeName: store.representative_name,
           address: store.address,
           detailAddress: store.detail_address,
@@ -507,6 +508,8 @@ export const updateStoreInfo = async (req, res) => {
     const {
       name,
       phoneNumber,
+      storePhoneNumber,
+      wantsSmsNotification,
       address,
       detailAddress,
       latitude,
@@ -526,6 +529,14 @@ export const updateStoreInfo = async (req, res) => {
     if (phoneNumber !== undefined) {
       updates.push('phone_number = ?');
       values.push(phoneNumber);
+    }
+    if (storePhoneNumber !== undefined) {
+      updates.push('store_phone_number = ?');
+      values.push(storePhoneNumber);
+    }
+    if (wantsSmsNotification !== undefined) {
+      updates.push('wants_sms_notification = ?');
+      values.push(Boolean(wantsSmsNotification));
     }
     if (address !== undefined) {
       updates.push('address = ?');
@@ -571,7 +582,7 @@ export const updateStoreInfo = async (req, res) => {
     // 업데이트된 정보 조회
     const stores = await query(
       `SELECT
-        id, email, phone_number, business_number,
+        id, email, phone_number, store_phone_number, wants_sms_notification, business_number,
         business_name, representative_name, address, detail_address,
         latitude, longitude, business_type, description,
         has_completed_setup, created_at, updated_at
@@ -590,6 +601,8 @@ export const updateStoreInfo = async (req, res) => {
           email: store.email,
           businessName: store.business_name,
           phoneNumber: store.phone_number,
+          storePhoneNumber: store.store_phone_number,
+          wantsSmsNotification: Boolean(store.wants_sms_notification),
           businessNumber: store.business_number,
           representativeName: store.representative_name,
           address: store.address,
