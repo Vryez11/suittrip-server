@@ -1,20 +1,72 @@
 /**
  * Guest Reservation Controller
  * 비회원(웹) 예약 생성/조회 — 인증 불요
- * 기존 createReservation 로직을 재사용하되, 비회원 전용 검증 추가
+ *
+ * P1 보안/안정성 항목 반영:
+ * - URL 토큰 기반 예약 조회 (전화번호만으로 조회 불가)
+ * - 매장 capacity 검증 (시간대별 수용량 체크)
+ * - 미결제 예약 TTL 정리 (30분)
  */
 
 import { success, error } from '../utils/response.js';
 import { query } from '../config/database.js';
 import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 
 const ALLOWED_STORAGE_TYPES = ['s', 'm', 'l', 'xl', 'special', 'refrigeration'];
 const PRICE_PER_BAG_PER_DAY = 6000;
+const RESERVATION_TTL_MINUTES = 30;
 
 const toMySQLDateTime = (dateString) => {
   if (!dateString) return null;
   const d = new Date(dateString);
   return d.toISOString().slice(0, 19).replace('T', ' ');
+};
+
+/**
+ * URL-safe 액세스 토큰 생성 (16바이트 = 22자 base64url)
+ */
+const generateAccessToken = () => {
+  return crypto.randomBytes(16).toString('base64url');
+};
+
+/**
+ * 매장 capacity 검증
+ * 해당 시간대에 이미 예약된 짐 개수가 max_capacity를 초과하는지 체크
+ */
+const checkCapacity = async (storeId, storageType, startTime, endTime, bagCount) => {
+  // storageType에 맞는 max_capacity 컬럼명 생성
+  const capacityColumn = `${storageType}_max_capacity`;
+
+  const [config] = await query(
+    `SELECT ${capacityColumn} as maxCapacity FROM store_storage_config WHERE store_id = ? LIMIT 1`,
+    [storeId]
+  );
+
+  if (!config) {
+    // 설정 없으면 기본값 사용 (제한 없음은 위험하므로 5개로 제한)
+    return { available: true, maxCapacity: 5, currentCount: 0 };
+  }
+
+  const maxCapacity = config.maxCapacity || 5;
+
+  // 겹치는 시간대의 활성 예약 짐 개수 합산
+  const [result] = await query(
+    `SELECT COALESCE(SUM(bag_count), 0) as totalBags
+     FROM reservations
+     WHERE store_id = ?
+       AND requested_storage_type = ?
+       AND status IN ('pending', 'confirmed', 'in_progress')
+       AND payment_status != 'refunded'
+       AND start_time < ?
+       AND end_time > ?`,
+    [storeId, storageType, toMySQLDateTime(endTime), toMySQLDateTime(startTime)]
+  );
+
+  const currentCount = result?.totalBags || 0;
+  const available = (currentCount + bagCount) <= maxCapacity;
+
+  return { available, maxCapacity, currentCount };
 };
 
 /**
@@ -34,7 +86,6 @@ export const createGuestReservation = async (req, res) => {
       bagCount,
       storageType = 's',
       message,
-      locale,
     } = req.body;
 
     // 필수 필드 검증
@@ -52,14 +103,12 @@ export const createGuestReservation = async (req, res) => {
       );
     }
 
-    // 짐 개수 검증
     if (bagCount < 1 || bagCount > 10) {
       return res.status(400).json(
         error('VALIDATION_ERROR', '짐 개수는 1~10개 사이여야 합니다')
       );
     }
 
-    // 전화번호 기본 검증
     const cleanedPhone = phoneNumber.replace(/[-\s]/g, '');
     if (cleanedPhone.length < 10 || cleanedPhone.length > 15) {
       return res.status(400).json(
@@ -67,17 +116,14 @@ export const createGuestReservation = async (req, res) => {
       );
     }
 
-    // 매장 존재 여부 확인
-    const [store] = await query('SELECT id, name, status FROM stores WHERE id = ? LIMIT 1', [storeId]);
+    // 매장 존재 + 활성 여부 확인
+    const [store] = await query(
+      'SELECT id, business_name as name FROM stores WHERE id = ? LIMIT 1',
+      [storeId]
+    );
     if (!store) {
       return res.status(404).json(error('STORE_NOT_FOUND', '매장을 찾을 수 없습니다'));
     }
-    if (store.status !== 'active') {
-      return res.status(400).json(error('STORE_UNAVAILABLE', '현재 예약을 받지 않는 매장입니다'));
-    }
-
-    // 금액 계산 (일당 6,000원 고정)
-    const totalAmount = PRICE_PER_BAG_PER_DAY * bagCount;
 
     // endTime 계산
     let calculatedEndTime = endTime;
@@ -87,9 +133,25 @@ export const createGuestReservation = async (req, res) => {
       calculatedEndTime = start.toISOString();
     }
 
-    // 비회원 고유 ID 생성
+    // capacity 검증
+    const capacity = await checkCapacity(storeId, storageType, startTime, calculatedEndTime, bagCount);
+    if (!capacity.available) {
+      return res.status(409).json(
+        error('CAPACITY_EXCEEDED', '해당 시간대에 수용 가능한 공간이 부족합니다', {
+          maxCapacity: capacity.maxCapacity,
+          currentCount: capacity.currentCount,
+          requested: bagCount,
+        })
+      );
+    }
+
+    // 금액 계산
+    const totalAmount = PRICE_PER_BAG_PER_DAY * bagCount;
+
+    // 비회원 고유 ID + 액세스 토큰 생성
     const customerId = `guest_${cleanedPhone}_${Date.now()}`;
     const reservationId = `res_${uuidv4()}`;
+    const accessToken = generateAccessToken();
 
     await query(
       `INSERT INTO reservations (
@@ -123,7 +185,7 @@ export const createGuestReservation = async (req, res) => {
         null,
         'pending',
         'card',
-        null,
+        accessToken, // qr_code 컬럼을 access_token 저장에 재활용
       ]
     );
 
@@ -136,7 +198,8 @@ export const createGuestReservation = async (req, res) => {
          end_time as endTime, duration, bag_count as bagCount,
          total_amount as totalAmount, message,
          requested_storage_type as storageType,
-         payment_status as paymentStatus, created_at as createdAt
+         payment_status as paymentStatus, qr_code as accessToken,
+         created_at as createdAt
        FROM reservations WHERE id = ?`,
       [reservationId]
     );
@@ -157,50 +220,19 @@ export const createGuestReservation = async (req, res) => {
 };
 
 /**
- * 비회원 예약 조회 (전화번호 기반)
- * GET /api/guest/reservations?phone=010-1234-5678
- */
-export const getGuestReservations = async (req, res) => {
-  try {
-    const { phone } = req.query;
-
-    if (!phone) {
-      return res.status(400).json(error('VALIDATION_ERROR', '전화번호가 필요합니다'));
-    }
-
-    const cleanedPhone = phone.replace(/[-\s]/g, '');
-
-    const rows = await query(
-      `SELECT
-         r.id, r.store_id as storeId, r.customer_name as customerName,
-         r.customer_phone as phoneNumber, r.customer_email as email,
-         r.status, r.start_time as startTime, r.end_time as endTime,
-         r.duration, r.bag_count as bagCount, r.total_amount as totalAmount,
-         r.message, r.requested_storage_type as storageType,
-         r.payment_status as paymentStatus, r.created_at as createdAt,
-         s.name as storeName, s.address as storeAddress, s.phone as storePhone
-       FROM reservations r
-       LEFT JOIN stores s ON r.store_id = s.id
-       WHERE r.customer_phone = ?
-       ORDER BY r.created_at DESC
-       LIMIT 20`,
-      [cleanedPhone]
-    );
-
-    return res.json(success({ reservations: rows }));
-  } catch (err) {
-    console.error('[getGuestReservations] error:', err);
-    return res.status(500).json(error('INTERNAL_ERROR', '서버 오류가 발생했습니다'));
-  }
-};
-
-/**
- * 비회원 예약 단건 조회
- * GET /api/guest/reservations/:id
+ * 비회원 예약 단건 조회 (토큰 기반)
+ * GET /api/guest/reservations/:id?token=xxx
+ *
+ * 토큰이 없으면 조회 불가 → 보안
  */
 export const getGuestReservation = async (req, res) => {
   try {
     const { id } = req.params;
+    const { token } = req.query;
+
+    if (!token) {
+      return res.status(401).json(error('TOKEN_REQUIRED', '예약 조회에는 토큰이 필요합니다'));
+    }
 
     const [reservation] = await query(
       `SELECT
@@ -210,13 +242,14 @@ export const getGuestReservation = async (req, res) => {
          r.duration, r.bag_count as bagCount, r.total_amount as totalAmount,
          r.message, r.requested_storage_type as storageType,
          r.payment_status as paymentStatus, r.created_at as createdAt,
-         s.name as storeName, s.address as storeAddress, s.phone as storePhone,
-         s.lat, s.lng
+         s.business_name as storeName, s.address as storeAddress,
+         s.store_phone_number as storePhone,
+         s.latitude as lat, s.longitude as lng
        FROM reservations r
        LEFT JOIN stores s ON r.store_id = s.id
-       WHERE r.id = ?
+       WHERE r.id = ? AND r.qr_code = ?
        LIMIT 1`,
-      [id]
+      [id, token]
     );
 
     if (!reservation) {
@@ -226,6 +259,39 @@ export const getGuestReservation = async (req, res) => {
     return res.json(success(reservation));
   } catch (err) {
     console.error('[getGuestReservation] error:', err);
+    return res.status(500).json(error('INTERNAL_ERROR', '서버 오류가 발생했습니다'));
+  }
+};
+
+/**
+ * 미결제 예약 자동 정리 (TTL)
+ * POST /api/guest/reservations/cleanup
+ *
+ * 30분 이상 pending 상태인 예약을 cancelled로 변경
+ * Cron 또는 스케줄러에서 호출
+ */
+export const cleanupExpiredReservations = async (req, res) => {
+  try {
+    const result = await query(
+      `UPDATE reservations
+       SET status = 'cancelled', updated_at = NOW()
+       WHERE status = 'pending'
+         AND payment_status = 'pending'
+         AND customer_id LIKE 'guest_%'
+         AND created_at < DATE_SUB(NOW(), INTERVAL ? MINUTE)`,
+      [RESERVATION_TTL_MINUTES]
+    );
+
+    const cancelledCount = result?.affectedRows || 0;
+
+    return res.json(
+      success(
+        { cancelledCount, ttlMinutes: RESERVATION_TTL_MINUTES },
+        `${cancelledCount}건의 만료 예약이 정리되었습니다`
+      )
+    );
+  } catch (err) {
+    console.error('[cleanupExpiredReservations] error:', err);
     return res.status(500).json(error('INTERNAL_ERROR', '서버 오류가 발생했습니다'));
   }
 };

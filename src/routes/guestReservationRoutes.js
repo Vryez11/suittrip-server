@@ -7,13 +7,13 @@
 import express from 'express';
 import {
   createGuestReservation,
-  getGuestReservations,
   getGuestReservation,
+  cleanupExpiredReservations,
 } from '../controllers/guestReservationController.js';
 
 const router = express.Router();
 
-// 간단한 IP 기반 rate limiting (분당 10회)
+// IP 기반 rate limiting (분당 10회)
 const rateLimitMap = new Map();
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 10;
@@ -69,14 +69,14 @@ router.use(guestRateLimit);
 router.post('/', createGuestReservation);
 
 /**
- * 비회원 예약 조회 (전화번호 기반)
- * GET /api/guest/reservations?phone=010-1234-5678
+ * 미결제 예약 자동 정리 (cron에서 호출)
+ * POST /api/guest/reservations/cleanup
  */
-router.get('/', getGuestReservations);
+router.post('/cleanup', cleanupExpiredReservations);
 
 /**
- * 비회원 예약 단건 조회
- * GET /api/guest/reservations/:id
+ * 비회원 예약 단건 조회 (토큰 필수)
+ * GET /api/guest/reservations/:id?token=xxx
  */
 router.get('/:id', getGuestReservation);
 
