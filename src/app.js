@@ -113,6 +113,8 @@ import customerSupportRoutes from './routes/customerSupportRoutes.js';
 import customerPaymentMethodRoutes from './routes/customerPaymentMethodRoutes.js';
 import customerPhoneRoutes from './routes/customerPhoneRoutes.js';
 import storeCouponPolicyRoutes from './routes/storeCouponPolicyRoutes.js';
+import guestReservationRoutes from './routes/guestReservationRoutes.js';
+import guestPaymentRoutes from './routes/guestPaymentRoutes.js';
 
 // 인증 라우트
 app.use('/api/auth', authRoutes);
@@ -182,6 +184,12 @@ app.use('/api/customer/phone', customerPhoneRoutes);
 
 // 매장 쿠폰 정책
 app.use('/api/store/coupons/policies', storeCouponPolicyRoutes);
+
+// 비회원(게스트) 예약 — 인증 불요, rate limiting 적용
+app.use('/api/guest/reservations', guestReservationRoutes);
+
+// 비회원(게스트) 결제 — 인증 불요
+app.use('/api/guest/payments', guestPaymentRoutes);
 
 // ============================================================================
 // 404 에러 핸들러
