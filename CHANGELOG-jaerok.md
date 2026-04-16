@@ -5,6 +5,64 @@
 
 ---
 
+## 2026-04-16 | 비회원(게스트) 예약/결제 API 추가 — 웹 랜딩페이지 연동
+
+### 배경
+- 랜딩 페이지(lifeistravel.io)에서 앱 없이 웹으로 짐보관 예약+결제하는 플로우 필요
+- 기존 예약 API는 모두 인증 필요 (`/api/reservations` → 매장주 JWT, `/api/customer/reservations` → 고객 JWT)
+- 이전에 있던 `/api/t/public/` 공개 라우트는 `c9ae2b1`에서 전부 제거됨
+- QR 포스터 스캔 + 검색 유입 여행자가 타겟
+
+### 추가한 API
+| Method | Endpoint | 인증 | 설명 |
+|--------|----------|------|------|
+| `POST` | `/api/guest/reservations` | 불요 (rate limited) | 비회원 예약 생성 |
+| `GET` | `/api/guest/reservations/:id?token=xxx` | 토큰 필수 | 예약 단건 조회 (URL 토큰 기반) |
+| `POST` | `/api/guest/reservations/cleanup` | 불요 | 미결제 예약 30분 TTL 자동 정리 (cron용) |
+| `POST` | `/api/guest/payments/prepare` | 불요 | 비회원 결제 준비 (기존 preparePayment 재사용) |
+
+### 추가/변경한 파일
+| 파일 | 변경 내용 |
+|------|----------|
+| `src/controllers/guestReservationController.js` | **신규** — 비회원 예약 생성(capacity 검증, 토큰 발급), 토큰 기반 조회, TTL 정리 |
+| `src/routes/guestReservationRoutes.js` | **신규** — 게스트 예약 라우트 + IP rate limiting (분당 10회) |
+| `src/routes/guestPaymentRoutes.js` | **신규** — 게스트 결제 준비 라우트 (기존 preparePayment 재사용) |
+| `src/app.js` | 게스트 라우트 2개 등록 (`/api/guest/reservations`, `/api/guest/payments`) |
+
+### 보안/안정성 (엔지니어링 리뷰 반영)
+| 항목 | 구현 |
+|------|------|
+| **URL 토큰 조회** | 예약 생성 시 `crypto.randomBytes(16)` 토큰 발급, `qr_code` 컬럼에 저장. 토큰 없으면 401 |
+| **매장 capacity 검증** | `store_storage_config` 테이블의 `{type}_max_capacity` 조회, 겹치는 시간대 예약 수 체크. 초과 시 409 |
+| **예약 TTL 30분** | `POST /cleanup`으로 30분 이상 pending+미결제 게스트 예약 자동 cancelled 처리 |
+| **Rate limiting** | IP 기반 분당 10회 제한 (in-memory Map). MVP 단일 인스턴스 기준 |
+| **매장 존재/활성 확인** | 예약 생성 전 `SELECT stores WHERE id = ?` + status 체크 |
+
+### 가격 정책 (MVP)
+- 일 단위 6,000원 고정 (시간/크기 무관)
+- `totalAmount = 6000 * bagCount`
+- 시간별/크기별 차등 과금은 향후 검토
+
+### 전화번호 기반 목록 조회 제거
+- 기존 `GET /api/guest/reservations?phone=` 제거 (보안 리스크: 전화번호 추측으로 타인 예약 열람 가능)
+- 대신 예약 완료 시 URL에 토큰 포함 → 해당 URL로만 조회 가능
+
+### 배포 시 꼭 해야 할 것
+1. **DB 스키마 변경 없음** — `qr_code` 컬럼(기존 TEXT)을 access_token 저장에 재활용
+2. **환경변수**: `TOSS_CLIENT_KEY`, `TOSS_SECRET_KEY` 설정 필요 (결제 기능용)
+3. **Cron 설정**: `/api/guest/reservations/cleanup`을 5분 간격으로 호출 (미결제 예약 정리)
+4. **CORS**: `CORS_ORIGIN`에 `https://www.lifeistravel.io` 추가 확인
+
+### 참고: 랜딩 페이지 쪽 변경
+- `app/api/guest/payments/` API Route 3개 추가 (백엔드 프록시)
+- `app/api/guest/reservations/[id]/route.ts` 추가 (토큰 기반 조회 프록시)
+- `services/paymentService.ts` 경로 통일: `/api/t/payments` → `/api/guest/payments`
+- `components/SeoulMap.tsx` 예약 폼을 StoreDetailModal 안에 통합
+- `components/ReservationBottomSheet.tsx` 신규 (store 상세 페이지용)
+- 결제 페이지 TODO 해결 (하드코딩 → 실제 데이터)
+
+---
+
 ## 2026-04-11 | 회원가입 플로우 간소화 — PASS 인증 제거, 연락처 2개로 분리
 
 ### 배경
