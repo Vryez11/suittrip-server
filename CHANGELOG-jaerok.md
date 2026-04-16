@@ -81,10 +81,26 @@
 ```
 
 ### 배포 순서 (중요!)
-1. lit-server: `007_push_subscriptions.sql` + `008_reservation_payment_link.sql` 마이그레이션 실행
-2. lit-server: VAPID 키 환경변수 설정 (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`)
+1. **DB 마이그레이션 먼저** (서버 배포 전에!):
+   ```bash
+   mysql -u <user> -p <db> < database/migrations/007_push_subscriptions.sql
+   mysql -u <user> -p <db> < database/migrations/008_reservation_payment_link.sql
+   ```
+2. **환경변수 5개 설정**:
+   ```env
+   # 웹 푸시 알림용 VAPID 키 (새로 생성: npx web-push generate-vapid-keys)
+   VAPID_PUBLIC_KEY=<생성한 public key>
+   VAPID_PRIVATE_KEY=<생성한 private key>
+   VAPID_SUBJECT=mailto:support@lifeistravel.io
+
+   # Toss Payments 결제용 (https://developers.tosspayments.com 에서 발급)
+   TOSS_CLIENT_KEY=test_gck_docs_Ovk5rk1EwkEbP0W43n07xlzm   # 테스트키 (먼저 이걸로 테스트)
+   TOSS_SECRET_KEY=test_gsk_docs_OaPz8L5KdmQXkzRz3y47BMw6   # 테스트키
+   ```
+   > 테스트키로 먼저 확인 후, 사업자 심사 통과하면 라이브키로 교체
 3. lit-server: PR #2 머지 + 배포
 4. Landing: 이미 main에 머지됨 (Vercel 자동 배포)
+5. **CORS 확인**: `CORS_ORIGIN`에 `https://www.lifeistravel.io` 포함되어 있는지 체크
 
 ### PR 목록
 - **Landing**: [PR #6](https://github.com/life-is-travel/landing/pull/6) — MERGED
