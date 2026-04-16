@@ -151,6 +151,7 @@ export const createGuestReservation = async (req, res) => {
     const totalAmount = PRICE_PER_BAG_PER_DAY * bagCount;
 
     // 결제 정보가 제공된 경우, 결제 레코드 확인 (결제→예약 플로우)
+    // payment_key가 있으면 반드시 결제 확인되어야 예약 생성 가능 (무료 이용 공격 방지)
     let paymentId = null;
     let paymentStatus = 'pending';
     if (payment_key && order_id) {
@@ -158,10 +159,13 @@ export const createGuestReservation = async (req, res) => {
         'SELECT id, status FROM payments WHERE pg_payment_key = ? AND pg_order_id = ? LIMIT 1',
         [payment_key, order_id]
       );
-      if (payment && payment.status === 'SUCCESS') {
-        paymentId = payment.id;
-        paymentStatus = 'paid';
+      if (!payment || payment.status !== 'SUCCESS') {
+        return res.status(400).json(
+          error('PAYMENT_NOT_VERIFIED', '결제가 확인되지 않았습니다. 결제 완료 후 다시 시도해주세요.')
+        );
       }
+      paymentId = payment.id;
+      paymentStatus = 'paid';
     }
 
     // 비회원 고유 ID + 액세스 토큰 생성
