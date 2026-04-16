@@ -9,7 +9,7 @@
  */
 
 import { success, error } from '../utils/response.js';
-import { query } from '../config/database.js';
+import { query, getConnection } from '../config/database.js';
 import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 
@@ -35,7 +35,10 @@ const generateAccessToken = () => {
  * 해당 시간대에 이미 예약된 짐 개수가 max_capacity를 초과하는지 체크
  */
 const checkCapacity = async (storeId, storageType, startTime, endTime, bagCount) => {
-  // storageType에 맞는 max_capacity 컬럼명 생성
+  // SQL injection 방지: 동적 컬럼명이므로 반드시 화이트리스트 검증
+  if (!ALLOWED_STORAGE_TYPES.includes(storageType)) {
+    throw new Error(`Invalid storage type: ${storageType}`);
+  }
   const capacityColumn = `${storageType}_max_capacity`;
 
   const [config] = await query(
@@ -150,69 +153,94 @@ export const createGuestReservation = async (req, res) => {
     // 금액 계산
     const totalAmount = PRICE_PER_BAG_PER_DAY * bagCount;
 
-    // 결제 정보가 제공된 경우, 결제 레코드 확인 (결제→예약 플로우)
-    // payment_key가 있으면 반드시 결제 확인되어야 예약 생성 가능 (무료 이용 공격 방지)
-    let paymentId = null;
-    let paymentStatus = 'pending';
-    if (payment_key && order_id) {
-      const [payment] = await query(
-        'SELECT id, status FROM payments WHERE pg_payment_key = ? AND pg_order_id = ? LIMIT 1',
-        [payment_key, order_id]
-      );
-      if (!payment || payment.status !== 'SUCCESS') {
-        return res.status(400).json(
-          error('PAYMENT_NOT_VERIFIED', '결제가 확인되지 않았습니다. 결제 완료 후 다시 시도해주세요.')
-        );
-      }
-      paymentId = payment.id;
-      paymentStatus = 'paid';
-    }
-
     // 비회원 고유 ID + 액세스 토큰 생성
     const customerId = `guest_${cleanedPhone}_${Date.now()}`;
     const reservationId = `res_${uuidv4()}`;
     const accessToken = generateAccessToken();
 
-    await query(
-      `INSERT INTO reservations (
-         id, store_id, customer_id, customer_name, customer_phone, customer_email,
-         storage_id, storage_number, requested_storage_type,
-         status, start_time, end_time, request_time, actual_start_time, actual_end_time,
-         duration, bag_count, total_amount, message, special_requests, luggage_image_urls,
-         payment_status, payment_method, payment_id, qr_code, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
-      [
-        reservationId,
-        storeId,
-        customerId,
-        customerName,
-        cleanedPhone,
-        email || null,
-        null,
-        null,
-        storageType,
-        'pending',
-        toMySQLDateTime(startTime),
-        toMySQLDateTime(calculatedEndTime),
-        toMySQLDateTime(new Date().toISOString()),
-        null,
-        null,
-        duration,
-        bagCount,
-        totalAmount,
-        message || null,
-        null,
-        null,
-        paymentStatus,
-        'card',
-        paymentId,
-        accessToken, // qr_code 컬럼을 access_token 저장에 재활용
-      ]
-    );
+    // 결제→예약 플로우: 트랜잭션으로 결제 검증 + 예약 생성 + 역참조를 원자적으로 처리
+    // 동일 결제로 이중 예약 방지 (FOR UPDATE + reservation_id IS NULL)
+    const conn = await getConnection();
+    let paymentId = null;
+    let paymentStatus = 'pending';
 
-    // 결제 레코드에 예약 ID 역참조 업데이트 (양방향 연결)
-    if (paymentId) {
-      await query('UPDATE payments SET reservation_id = ? WHERE id = ?', [reservationId, paymentId]);
+    try {
+      await conn.beginTransaction();
+
+      // 결제 정보가 제공된 경우 결제 레코드 확인 + 잠금
+      if (payment_key && order_id) {
+        const [payments] = await conn.query(
+          'SELECT id, status, reservation_id FROM payments WHERE pg_payment_key = ? AND pg_order_id = ? LIMIT 1 FOR UPDATE',
+          [payment_key, order_id]
+        );
+        const payment = payments[0];
+        if (!payment || payment.status !== 'SUCCESS') {
+          await conn.rollback();
+          conn.release();
+          return res.status(400).json(
+            error('PAYMENT_NOT_VERIFIED', '결제가 확인되지 않았습니다. 결제 완료 후 다시 시도해주세요.')
+          );
+        }
+        if (payment.reservation_id) {
+          await conn.rollback();
+          conn.release();
+          return res.status(409).json(
+            error('PAYMENT_ALREADY_USED', '이 결제는 이미 다른 예약에 사용되었습니다.')
+          );
+        }
+        paymentId = payment.id;
+        paymentStatus = 'paid';
+      }
+
+      // 예약 생성
+      await conn.query(
+        `INSERT INTO reservations (
+           id, store_id, customer_id, customer_name, customer_phone, customer_email,
+           storage_id, storage_number, requested_storage_type,
+           status, start_time, end_time, request_time, actual_start_time, actual_end_time,
+           duration, bag_count, total_amount, message, special_requests, luggage_image_urls,
+           payment_status, payment_method, payment_id, qr_code, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+        [
+          reservationId,
+          storeId,
+          customerId,
+          customerName,
+          cleanedPhone,
+          email || null,
+          null,
+          null,
+          storageType,
+          'pending',
+          toMySQLDateTime(startTime),
+          toMySQLDateTime(calculatedEndTime),
+          toMySQLDateTime(new Date().toISOString()),
+          null,
+          null,
+          duration,
+          bagCount,
+          totalAmount,
+          message || null,
+          null,
+          null,
+          paymentStatus,
+          'card',
+          paymentId,
+          accessToken,
+        ]
+      );
+
+      // 결제 레코드에 예약 ID 역참조 업데이트 (양방향 연결)
+      if (paymentId) {
+        await conn.query('UPDATE payments SET reservation_id = ? WHERE id = ?', [reservationId, paymentId]);
+      }
+
+      await conn.commit();
+    } catch (txErr) {
+      await conn.rollback();
+      throw txErr;
+    } finally {
+      conn.release();
     }
 
     // 생성된 예약 조회
