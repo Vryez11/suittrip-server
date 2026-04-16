@@ -86,6 +86,8 @@ export const createGuestReservation = async (req, res) => {
       bagCount,
       storageType = 's',
       message,
+      payment_key,
+      order_id,
     } = req.body;
 
     // 필수 필드 검증
@@ -148,6 +150,20 @@ export const createGuestReservation = async (req, res) => {
     // 금액 계산
     const totalAmount = PRICE_PER_BAG_PER_DAY * bagCount;
 
+    // 결제 정보가 제공된 경우, 결제 레코드 확인 (결제→예약 플로우)
+    let paymentId = null;
+    let paymentStatus = 'pending';
+    if (payment_key && order_id) {
+      const [payment] = await query(
+        'SELECT id, status FROM payments WHERE pg_payment_key = ? AND pg_order_id = ? LIMIT 1',
+        [payment_key, order_id]
+      );
+      if (payment && payment.status === 'SUCCESS') {
+        paymentId = payment.id;
+        paymentStatus = 'paid';
+      }
+    }
+
     // 비회원 고유 ID + 액세스 토큰 생성
     const customerId = `guest_${cleanedPhone}_${Date.now()}`;
     const reservationId = `res_${uuidv4()}`;
@@ -159,8 +175,8 @@ export const createGuestReservation = async (req, res) => {
          storage_id, storage_number, requested_storage_type,
          status, start_time, end_time, request_time, actual_start_time, actual_end_time,
          duration, bag_count, total_amount, message, special_requests, luggage_image_urls,
-         payment_status, payment_method, qr_code, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+         payment_status, payment_method, payment_id, qr_code, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         reservationId,
         storeId,
@@ -183,11 +199,17 @@ export const createGuestReservation = async (req, res) => {
         message || null,
         null,
         null,
-        'pending',
+        paymentStatus,
         'card',
+        paymentId,
         accessToken, // qr_code 컬럼을 access_token 저장에 재활용
       ]
     );
+
+    // 결제 레코드에 예약 ID 역참조 업데이트 (양방향 연결)
+    if (paymentId) {
+      await query('UPDATE payments SET reservation_id = ? WHERE id = ?', [reservationId, paymentId]);
+    }
 
     // 생성된 예약 조회
     const [reservation] = await query(
