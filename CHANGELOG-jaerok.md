@@ -46,6 +46,14 @@
 | `app/[locale]/payment/[reservationId]/page.tsx` | **삭제** — 기존 결제 페이지 (reservationId 기반) |
 | `app/[locale]/payment/[reservationId]/success/page.tsx` | **삭제** — 기존 성공 페이지 |
 
+### 코드 리뷰 BLOCKER 수정
+
+| 항목 | 구현 |
+|------|------|
+| **SQL injection 방지** | `checkCapacity` 함수 내부에서 `ALLOWED_STORAGE_TYPES` 화이트리스트 직접 검증 추가. 동적 컬럼명(`${storageType}_max_capacity`)이 외부 입력으로부터 안전하게 보호됨 |
+| **트랜잭션 추가** | 결제 검증 + 예약 INSERT + payments 역참조 UPDATE를 `BEGIN/COMMIT` 트랜잭션으로 원자적 처리. 중간 크래시 시 롤백 |
+| **이중 예약 방지** | `SELECT ... FOR UPDATE`로 결제 행 잠금 + `reservation_id IS NULL` 조건으로 동일 결제 재사용 차단. 이미 사용된 결제는 409 `PAYMENT_ALREADY_USED` 에러 반환 |
+
 ### 보안 수정 (Quality Gate 반영)
 
 | 항목 | 구현 |
