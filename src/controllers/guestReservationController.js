@@ -275,7 +275,7 @@ export const createGuestReservation = async (req, res) => {
 
 /**
  * 비회원 예약 단건 조회 (토큰 기반)
- * GET /api/guest/reservations/:id?token=xxx
+ * GET /api/guest/reservations/:customer_phone?token=xxx
  *
  * 토큰이 없으면 조회 불가 → 보안
  */
@@ -301,9 +301,8 @@ export const getGuestReservation = async (req, res) => {
          s.latitude as lat, s.longitude as lng
        FROM reservations r
        LEFT JOIN stores s ON r.store_id = s.id
-       WHERE r.id = ? AND r.qr_code = ?
-       LIMIT 1`,
-      [id, token]
+       WHERE r.customer_phone = ?`,
+      [customer_phone, token]
     );
 
     if (!reservation) {
