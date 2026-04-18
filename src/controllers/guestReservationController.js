@@ -42,7 +42,7 @@ const checkCapacity = async (storeId, storageType, startTime, endTime, bagCount)
   const capacityColumn = `${storageType}_max_capacity`;
 
   const [config] = await query(
-    `SELECT ${capacityColumn} as maxCapacity FROM store_storage_config WHERE store_id = ? LIMIT 1`,
+    `SELECT ${capacityColumn} as maxCapacity FROM store_settings WHERE store_id = ? LIMIT 1`,
     [storeId]
   );
 
