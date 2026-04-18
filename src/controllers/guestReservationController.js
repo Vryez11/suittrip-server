@@ -23,6 +23,8 @@ const toMySQLDateTime = (dateString) => {
   return d.toISOString().slice(0, 19).replace('T', ' ');
 };
 
+const normalizePhone = (phone) => String(phone || '').replace(/[-\s]/g, '');
+
 /**
  * URL-safe 액세스 토큰 생성 (16바이트 = 22자 base64url)
  */
@@ -114,7 +116,7 @@ export const createGuestReservation = async (req, res) => {
       );
     }
 
-    const cleanedPhone = phoneNumber.replace(/[-\s]/g, '');
+    const cleanedPhone = normalizePhone(phoneNumber);
     if (cleanedPhone.length < 10 || cleanedPhone.length > 15) {
       return res.status(400).json(
         error('VALIDATION_ERROR', '올바른 전화번호를 입력해주세요')
@@ -274,14 +276,61 @@ export const createGuestReservation = async (req, res) => {
 };
 
 /**
+ * 비회원 예약 목록 조회 (전화번호 기반)
+ * GET /api/guest/reservations?phoneNumber=01012345678
+ */
+export const getGuestReservations = async (req, res) => {
+  try {
+    const phone = req.query.phoneNumber || req.query.customer_phone;
+    const cleanedPhone = normalizePhone(phone);
+
+    if (!cleanedPhone) {
+      return res.status(400).json(
+        error('VALIDATION_ERROR', '전화번호가 필요합니다', {
+          required: ['phoneNumber'],
+        })
+      );
+    }
+
+    const reservations = await query(
+      `SELECT
+         r.id, r.store_id as storeId, r.customer_name as customerName,
+         r.customer_phone as phoneNumber, r.customer_email as email,
+         r.status, r.start_time as startTime, r.end_time as endTime,
+         r.duration, r.bag_count as bagCount, r.total_amount as totalAmount,
+         r.message, r.requested_storage_type as storageType,
+         r.payment_status as paymentStatus, r.created_at as createdAt,
+         s.business_name as storeName, s.address as storeAddress,
+         s.phone_number as storePhone,
+         s.latitude as lat, s.longitude as lng
+       FROM reservations r
+       LEFT JOIN stores s ON r.store_id = s.id
+       WHERE r.customer_phone = ?
+       ORDER BY r.created_at DESC`,
+      [cleanedPhone]
+    );
+
+    return res.json(
+      success({
+        items: reservations || [],
+        total: reservations?.length || 0,
+      })
+    );
+  } catch (err) {
+    console.error('[getGuestReservations] error:', err);
+    return res.status(500).json(error('INTERNAL_ERROR', '서버 오류가 발생했습니다'));
+  }
+};
+
+/**
  * 비회원 예약 단건 조회 (토큰 기반)
- * GET /api/guest/reservations/:customer_phone?token=xxx
+ * GET /api/guest/reservations/:id?token=xxx
  *
  * 토큰이 없으면 조회 불가 → 보안
  */
 export const getGuestReservation = async (req, res) => {
   try {
-    const { customer_phone } = req.params;
+    const { id } = req.params;
     const { token } = req.query;
 
     if (!token) {
@@ -297,12 +346,14 @@ export const getGuestReservation = async (req, res) => {
          r.message, r.requested_storage_type as storageType,
          r.payment_status as paymentStatus, r.created_at as createdAt,
          s.business_name as storeName, s.address as storeAddress,
-         s.store_phone_number as storePhone,
+         s.phone_number as storePhone,
          s.latitude as lat, s.longitude as lng
        FROM reservations r
        LEFT JOIN stores s ON r.store_id = s.id
-       WHERE r.customer_phone = ?`,
-      [customer_phone, token]
+       WHERE r.id = ?
+         AND r.qr_code = ?
+       LIMIT 1`,
+      [id, token]
     );
 
     if (!reservation) {

@@ -7,6 +7,7 @@
 import express from 'express';
 import {
   createGuestReservation,
+  getGuestReservations,
   getGuestReservation,
   cleanupExpiredReservations,
 } from '../controllers/guestReservationController.js';
@@ -73,6 +74,12 @@ router.post('/', createGuestReservation);
  * POST /api/guest/reservations/cleanup
  */
 router.post('/cleanup', cleanupExpiredReservations);
+
+/**
+ * 비회원 예약 목록 조회 (전화번호 기반)
+ * GET /api/guest/reservations?phoneNumber=01012345678
+ */
+router.get('/', getGuestReservations);
 
 /**
  * 비회원 예약 단건 조회 (토큰 필수)
