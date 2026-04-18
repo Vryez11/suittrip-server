@@ -281,7 +281,7 @@ export const createGuestReservation = async (req, res) => {
  */
 export const getGuestReservation = async (req, res) => {
   try {
-    const { id } = req.params;
+    const { customer_phone } = req.params;
     const { token } = req.query;
 
     if (!token) {
