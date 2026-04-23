@@ -35,6 +35,7 @@ export const listStores = async (req, res) => {
     let sql = `
       SELECT
         s.id,
+        s.slug,
         s.business_name,
         COALESCE(s.store_phone_number, s.phone_number) AS phone_number,
         s.address,
@@ -98,6 +99,7 @@ export const listStores = async (req, res) => {
         {
           items: rows.map((row) => ({
             id: row.id,
+            slug: row.slug,
             businessName: row.business_name,
             phoneNumber: row.phone_number,
             address: row.address,
@@ -122,6 +124,11 @@ export const listStores = async (req, res) => {
 /**
  * GET /api/customer/stores/:storeId
  * 상세 조회: stores 기본 정보 + reviews + operating_hours + store_settings
+ *
+ * storeId 파라미터는 다음 두 형태를 모두 허용한다:
+ *   - UUID 형식의 내부 id (예: store_9c9417ac-...)
+ *   - 고객 공유용 slug (예: cafe-seoul-gangnam)
+ * slug는 UNIQUE 제약이 있어 둘 중 어느 쪽이 와도 단일 매장으로 해석된다.
  */
 export const getStoreDetail = async (req, res) => {
   try {
@@ -131,16 +138,17 @@ export const getStoreDetail = async (req, res) => {
       `
       SELECT
         s.id,
+        s.slug,
         s.business_name,
         COALESCE(s.store_phone_number, s.phone_number) AS phone_number,
         s.address,
         s.latitude,
         s.longitude
       FROM stores s
-      WHERE s.id = ?
+      WHERE s.id = ? OR s.slug = ?
       LIMIT 1
       `,
-      [storeId]
+      [storeId, storeId]
     );
 
     if (!rows || rows.length === 0) {
@@ -148,18 +156,20 @@ export const getStoreDetail = async (req, res) => {
     }
 
     const row = rows[0];
+    // 연관 데이터는 내부 id로 조회 (slug로 들어왔더라도 동일 동작 보장)
+    const internalId = row.id;
 
-    // 연관 데이터 조회
     const [reviews, hours, settings] = await Promise.all([
-      query(`SELECT * FROM reviews WHERE store_id = ?`, [storeId]),
-      query(`SELECT * FROM store_operating_hours WHERE store_id = ? LIMIT 1`, [storeId]),
-      query(`SELECT * FROM store_settings WHERE store_id = ? LIMIT 1`, [storeId]),
+      query(`SELECT * FROM reviews WHERE store_id = ?`, [internalId]),
+      query(`SELECT * FROM store_operating_hours WHERE store_id = ? LIMIT 1`, [internalId]),
+      query(`SELECT * FROM store_settings WHERE store_id = ? LIMIT 1`, [internalId]),
     ]);
 
     return res.json(
       success(
         {
           id: row.id,
+          slug: row.slug,
           businessName: row.business_name,
           phoneNumber: row.phone_number,
           address: row.address,
