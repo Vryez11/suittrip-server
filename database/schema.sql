@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS stores (
   -- 사업자 정보
   business_number VARCHAR(50) UNIQUE COMMENT '사업자 등록번호',
   business_name VARCHAR(255) NOT NULL COMMENT '사업자명',
+  slug VARCHAR(80) NULL COMMENT '고객 공유 URL용 slug (예: cafe-seoul-gangnam)',
   representative_name VARCHAR(255) COMMENT '대표자명',
 
   -- 위치 정보
@@ -41,7 +42,8 @@ CREATE TABLE IF NOT EXISTS stores (
 
   INDEX idx_email (email),
   INDEX idx_business_number (business_number),
-  INDEX idx_location (latitude, longitude)
+  INDEX idx_location (latitude, longitude),
+  UNIQUE KEY uniq_store_slug (slug)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='점포 기본 정보';
 
 -- ============================================================================

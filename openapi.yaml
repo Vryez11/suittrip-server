@@ -208,6 +208,10 @@ paths:
     get:
       tags: [Customer Stores]
       summary: 고객용 매장 상세 조회
+      description: |
+        storeId 파라미터는 내부 id(UUID) 또는 고객 공유용 slug를 모두 허용한다.
+        slug는 stores.slug 컬럼의 UNIQUE 값으로 단일 매장으로 해석된다.
+        응답 본문에는 `id`와 `slug`가 모두 포함된다.
       parameters:
         - $ref: '#/components/parameters/StoreIdPath'
       responses:
@@ -1184,6 +1188,7 @@ components:
       in: path
       name: storeId
       required: true
+      description: 매장 식별자. UUID(store_xxxx) 또는 공유 slug(cafe-seoul-gangnam) 허용.
       schema: { type: string }
     ReservationIdPath:
       in: path
