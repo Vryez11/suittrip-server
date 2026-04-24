@@ -36,6 +36,7 @@ export const listStores = async (req, res) => {
       SELECT
         s.id,
         s.business_name,
+        s.description,
         COALESCE(s.store_phone_number, s.phone_number) AS phone_number,
         s.address,
         s.latitude,
@@ -99,6 +100,7 @@ export const listStores = async (req, res) => {
           items: rows.map((row) => ({
             id: row.id,
             businessName: row.business_name,
+            description: row.description,
             phoneNumber: row.phone_number,
             address: row.address,
             latitude: row.latitude,
