@@ -14,7 +14,9 @@ import { v4 as uuidv4 } from 'uuid';
 import crypto from 'crypto';
 
 const ALLOWED_STORAGE_TYPES = ['s', 'm', 'l', 'xl', 'special', 'refrigeration'];
-const PRICE_PER_BAG_PER_DAY = 6000;
+const SHORT_STAY_HOURS = 4;
+const SHORT_STAY_PRICE_PER_BAG = 6000;
+const EXTENDED_STAY_PRICE_PER_BAG = 12000;
 const RESERVATION_TTL_MINUTES = 30;
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
@@ -37,6 +39,13 @@ const toKSTISOString = (value) => {
 };
 
 const normalizePhone = (phone) => String(phone || '').replace(/[-\s]/g, '');
+
+const calculateTotalAmount = (duration, bagCount) => {
+  const hours = Number(duration);
+  const bags = Number(bagCount);
+  const pricePerBag = hours <= SHORT_STAY_HOURS ? SHORT_STAY_PRICE_PER_BAG : EXTENDED_STAY_PRICE_PER_BAG;
+  return pricePerBag * bags;
+};
 
 /**
  * id OR slug → canonical store 정보로 정규화.
@@ -150,7 +159,16 @@ export const createGuestReservation = async (req, res) => {
       );
     }
 
-    if (bagCount < 1 || bagCount > 10) {
+    const numericDuration = Number(duration);
+    const numericBagCount = Number(bagCount);
+
+    if (!Number.isFinite(numericDuration) || numericDuration <= 0) {
+      return res.status(400).json(
+        error('VALIDATION_ERROR', '예약 시간은 1시간 이상이어야 합니다')
+      );
+    }
+
+    if (!Number.isInteger(numericBagCount) || numericBagCount < 1 || numericBagCount > 10) {
       return res.status(400).json(
         error('VALIDATION_ERROR', '짐 개수는 1~10개 사이여야 합니다')
       );
@@ -175,23 +193,23 @@ export const createGuestReservation = async (req, res) => {
     let calculatedEndTime = endTime;
     if (!calculatedEndTime && startTime && duration) {
       const start = new Date(startTime);
-      calculatedEndTime = new Date(start.getTime() + Number(duration) * 60 * 60 * 1000);
+      calculatedEndTime = new Date(start.getTime() + numericDuration * 60 * 60 * 1000);
     }
 
     // capacity 검증
-    const capacity = await checkCapacity(canonicalStoreId, effectiveStorageType, startTime, calculatedEndTime, bagCount);
+    const capacity = await checkCapacity(canonicalStoreId, effectiveStorageType, startTime, calculatedEndTime, numericBagCount);
     if (!capacity.available) {
       return res.status(409).json(
         error('CAPACITY_EXCEEDED', '해당 시간대에 수용 가능한 공간이 부족합니다', {
           maxCapacity: capacity.maxCapacity,
           currentCount: capacity.currentCount,
-          requested: bagCount,
+          requested: numericBagCount,
         })
       );
     }
 
     // 금액 계산
-    const totalAmount = PRICE_PER_BAG_PER_DAY * bagCount;
+    const totalAmount = calculateTotalAmount(numericDuration, numericBagCount);
 
     // 비회원 고유 ID + 액세스 토큰 생성
     const customerId = `guest_${cleanedPhone}_${Date.now()}`;
@@ -256,8 +274,8 @@ export const createGuestReservation = async (req, res) => {
           toMySQLDateTime(calculatedEndTime),
           null,
           null,
-          duration,
-          bagCount,
+          numericDuration,
+          numericBagCount,
           totalAmount,
           message || null,
           null,
