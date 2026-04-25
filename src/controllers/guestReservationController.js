@@ -26,17 +26,20 @@ const toMySQLDateTime = (dateString) => {
 const normalizePhone = (phone) => String(phone || '').replace(/[-\s]/g, '');
 
 /**
- * id OR slug → canonical store id 로 정규화.
+ * id OR slug → canonical store 정보로 정규화.
  * UUID/slug 둘 다 받아 동일하게 동작하게 만들어 클라이언트가 UUID를 노출할 필요가 없게 한다.
  * 매장이 없으면 null 반환.
+ *
+ * 반환: { id, name } | null
  */
-const resolveStoreId = async (idOrSlug) => {
+const resolveStore = async (idOrSlug) => {
   if (!idOrSlug) return null;
   const rows = await query(
-    'SELECT id FROM stores WHERE id = ? OR slug = ? LIMIT 1',
+    'SELECT id, business_name AS name FROM stores WHERE id = ? OR slug = ? LIMIT 1',
     [idOrSlug, idOrSlug]
   );
-  return rows?.[0]?.id || null;
+  const row = rows?.[0];
+  return row ? { id: row.id, name: row.name } : null;
 };
 
 /**
@@ -149,10 +152,11 @@ export const createGuestReservation = async (req, res) => {
 
     // 매장 존재 확인 + storeId가 slug면 canonical id로 정규화
     // (Landing이 UUID 대신 slug를 보낼 수 있도록 — 네트워크 탭에서 UUID 노출 차단 목적)
-    const canonicalStoreId = await resolveStoreId(storeId);
-    if (!canonicalStoreId) {
+    const store = await resolveStore(storeId);
+    if (!store) {
       return res.status(404).json(error('STORE_NOT_FOUND', '매장을 찾을 수 없습니다'));
     }
+    const canonicalStoreId = store.id;
 
     // endTime 계산
     let calculatedEndTime = endTime;
@@ -526,10 +530,11 @@ export const getAvailability = async (req, res) => {
     }
 
     // storeId가 slug면 canonical id로 정규화
-    const canonicalStoreId = await resolveStoreId(storeId);
-    if (!canonicalStoreId) {
+    const resolved = await resolveStore(storeId);
+    if (!resolved) {
       return res.status(404).json(error('STORE_NOT_FOUND', '매장을 찾을 수 없습니다'));
     }
+    const canonicalStoreId = resolved.id;
 
     const endDate = new Date(start.getTime() + duration * 3600 * 1000);
     const endTimeIso = endDate.toISOString();
