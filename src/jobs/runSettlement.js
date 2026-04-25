@@ -1,21 +1,17 @@
 /**
- * ?�산 배치 ?�행 ?�크립트
+ * 정산 배치 실행 스크립트
  *
- * ?�용�?
- *   node src/jobs/runSettlement.js                    # ?�제 00:00 ~ ?�늘 00:00
- *   node src/jobs/runSettlement.js --dry-run          # ?��??�이??(DB 반영 ?�함)
+ * 사용법:
+ *   node src/jobs/runSettlement.js
+ *   node src/jobs/runSettlement.js --dry-run
  *   node src/jobs/runSettlement.js --start 2025-01-01 --end 2025-01-02
  *
- * Render Cron Jobs ?�정 ?�시:
- *   - 매일 ?�벽 2?? 0 2 * * * node src/jobs/runSettlement.js
+ * 기본 기간은 어제 00:00부터 오늘 00:00까지입니다.
  */
 
 import { runSettlementPeriod } from '../services/settlementService.js';
 import { getYesterdayPeriod } from '../utils/settlementPeriod.js';
 
-/**
- * 커맨?�라???�자 ?�싱
- */
 function parseArgs() {
   const args = process.argv.slice(2);
   const options = {
@@ -39,29 +35,47 @@ function parseArgs() {
   return options;
 }
 
-/**
- * ?�짜 문자?�을 Date 객체�?변?? * @param {string} dateStr - YYYY-MM-DD ?�식
- * @returns {Date}
- */
 function parseDate(dateStr) {
   const date = new Date(dateStr);
-  if (isNaN(date.getTime())) {
-    throw new Error(`?�효?��? ?��? ?�짜 ?�식: ${dateStr}`);
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`유효하지 않은 날짜 형식입니다: ${dateStr}`);
   }
   return date;
 }
 
-/**
- * 메인 ?�행 ?�수
- */
-async function main() {
+function formatDate(date) {
+  return date.toISOString().split('T')[0];
+}
 
+function printSettlementSummary(result) {
+  console.log(`정산 상태: ${result.status}`);
+  console.log(`대상 결제: ${result.totalPayments ?? 0}건`);
+  console.log(`정산 명세: ${result.totalStatements ?? 0}건`);
+
+  if (result.totalPayout !== undefined) {
+    console.log(`지급액 합계: ${result.totalPayout}원`);
+  }
+  if (result.totalCommission !== undefined) {
+    console.log(`수수료 합계: ${result.totalCommission}원`);
+  }
+
+  if (result.settlements?.length) {
+    result.settlements.forEach((settlement) => {
+      const statement = settlement.statementId ? `statementId=${settlement.statementId}` : 'dry-run';
+      console.log(
+        `- storeId=${settlement.storeId}, ${statement}, payments=${settlement.paymentsCount}, payout=${settlement.payoutAmount}`
+      );
+    });
+  }
+}
+
+async function main() {
   try {
     const options = parseArgs();
 
-    let periodStart, periodEnd;
+    let periodStart;
+    let periodEnd;
 
-    // ?�짜 ?�자가 ?�으�??�용, ?�으�??�제 기간 ?�용
     if (options.startDate && options.endDate) {
       periodStart = parseDate(options.startDate);
       periodEnd = parseDate(options.endDate);
@@ -69,13 +83,12 @@ async function main() {
       const period = getYesterdayPeriod();
       periodStart = period.periodStart;
       periodEnd = period.periodEnd;
-        `?�� ?�제 기간: ${periodStart.toISOString().split('T')[0]} ~ ${periodEnd.toISOString().split('T')[0]}`
-      );
     }
 
+    console.log(`정산 기간: ${formatDate(periodStart)} ~ ${formatDate(periodEnd)}`);
     if (options.dryRun) {
+      console.log('드라이런 모드: DB 변경 없이 계산만 수행합니다.');
     }
-
 
     const result = await runSettlementPeriod({
       periodStart,
@@ -83,26 +96,13 @@ async function main() {
       dryRun: options.dryRun,
     });
 
-
-
-    if (result.status === 'success' && !options.dryRun) {
-    }
-
-    if (result.settlements && result.settlements.length > 0) {
-      result.settlements.forEach((s, idx) => {
-        if (s.statementId) {
-        }
-      });
-    }
-
-
+    printSettlementSummary(result);
     process.exit(0);
-  } catch (error) {
-    console.error('\n???�산 ?�패:', error.message);
-    console.error(error.stack);
+  } catch (err) {
+    console.error('\n정산 실패:', err.message);
+    console.error(err.stack);
     process.exit(1);
   }
 }
 
-// ?�크립트 ?�행
 main();
