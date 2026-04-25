@@ -1,9 +1,8 @@
 /**
  * Customer social login / signup controller (e.g., Kakao)
- * NOTE: External provider token validation is not implemented yet.
  */
 
-import crypto from 'crypto';
+import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
@@ -17,6 +16,7 @@ const ACCESS_TOKEN_SECRET = process.env.JWT_ACCESS_TOKEN_SECRET;
 const REFRESH_TOKEN_SECRET = process.env.JWT_REFRESH_TOKEN_SECRET;
 const ACCESS_TOKEN_EXPIRES_IN = process.env.JWT_ACCESS_TOKEN_EXPIRES_IN || '1h';
 const REFRESH_TOKEN_EXPIRES_IN = process.env.JWT_REFRESH_TOKEN_EXPIRES_IN || '30d';
+const KAKAO_USER_ME_URL = 'https://kapi.kakao.com/v2/user/me';
 
 const generateCustomerAccessToken = (customerId, provider) =>
   jwt.sign({ customerId, role: 'customer', provider, type: 'access' }, ACCESS_TOKEN_SECRET, {
@@ -48,6 +48,82 @@ const verifyRefresh = (token) => {
   }
 };
 
+class ProviderTokenError extends Error {
+  constructor(code, message, statusCode = 401) {
+    super(message);
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
+const normalizeProvider = (provider) => String(provider || '').trim().toLowerCase();
+
+const toBit = (val, fallback = 0) => {
+  if (val === undefined || val === null) return fallback;
+  return val ? 1 : 0;
+};
+
+const verifyKakaoAccessToken = async (token) => {
+  try {
+    const { data } = await axios.get(KAKAO_USER_ME_URL, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      timeout: 5000,
+    });
+
+    if (!data?.id) {
+      throw new ProviderTokenError('PROVIDER_TOKEN_INVALID', '카카오 사용자 정보를 확인할 수 없습니다');
+    }
+
+    const account = data.kakao_account || {};
+    const profile = account.profile || {};
+    const properties = data.properties || {};
+
+    return {
+      providerId: String(data.id),
+      email: account.email || null,
+      name: account.name || profile.nickname || properties.nickname || null,
+      profileImage: profile.profile_image_url || properties.profile_image || null,
+      rawProfile: data,
+    };
+  } catch (err) {
+    if (err instanceof ProviderTokenError) {
+      throw err;
+    }
+
+    if (err.response?.status === 401) {
+      throw new ProviderTokenError('PROVIDER_TOKEN_INVALID', '카카오 accessToken이 유효하지 않습니다');
+    }
+
+    if (err.response) {
+      throw new ProviderTokenError(
+        'PROVIDER_TOKEN_REJECTED',
+        err.response.data?.msg || err.response.data?.message || '카카오 accessToken 검증에 실패했습니다',
+        401
+      );
+    }
+
+    throw new ProviderTokenError('PROVIDER_UNAVAILABLE', '카카오 인증 서버에 연결할 수 없습니다', 502);
+  }
+};
+
+const verifySocialAccessToken = async (providerKey, token) => {
+  if (!token) {
+    throw new ProviderTokenError('PROVIDER_TOKEN_REQUIRED', 'provider accessToken이 필요합니다', 400);
+  }
+
+  if (providerKey === 'kakao') {
+    return verifyKakaoAccessToken(token);
+  }
+
+  throw new ProviderTokenError(
+    'UNSUPPORTED_PROVIDER',
+    `지원하지 않는 소셜 로그인 provider입니다: ${providerKey}`,
+    400
+  );
+};
+
 /**
  * 소셜 로그인: 신규면 생성, 기존이면 갱신 후 토큰 발급
  */
@@ -74,23 +150,30 @@ export const socialLogin = async (req, res) => {
 
     const accessTokenInput = accessToken || socialAccessToken;
 
-    if (!provider || !socialId || !accessTokenInput) {
+    if (!provider || !accessTokenInput) {
       return res
         .status(400)
         .json(
-          error('VALIDATION_ERROR', 'provider, socialId, accessToken이 필요합니다', {
-            required: ['provider', 'socialId', 'accessToken'],
+          error('VALIDATION_ERROR', 'provider, accessToken이 필요합니다', {
+            required: ['provider', 'accessToken'],
           })
         );
     }
 
-    const providerKey = provider.toLowerCase();
-    const providerId = socialId; // 고정 식별자 사용 (access token 해시 미사용)
+    const providerKey = normalizeProvider(provider);
+    const verifiedProfile = await verifySocialAccessToken(providerKey, accessTokenInput);
 
-    const toBit = (val, fallback = 0) => {
-      if (val === undefined || val === null) return fallback;
-      return val ? 1 : 0;
-    };
+    if (socialId && String(socialId) !== verifiedProfile.providerId) {
+      return res.status(401).json(
+        error('PROVIDER_ID_MISMATCH', '요청한 socialId가 provider token의 사용자와 일치하지 않습니다')
+      );
+    }
+
+    const providerId = verifiedProfile.providerId;
+    const profileName = verifiedProfile.name || name || null;
+    const profileEmail = verifiedProfile.email || email || null;
+    const profileImageUrl = verifiedProfile.profileImage || profileImage || null;
+    const rawProfile = JSON.stringify(verifiedProfile.rawProfile);
 
     const existing = await query(
       'SELECT * FROM customers WHERE provider_type = ? AND provider_id = ? LIMIT 1',
@@ -121,13 +204,13 @@ export const socialLogin = async (req, res) => {
                marketing_agreed = COALESCE(?, marketing_agreed)
          WHERE id = ?`,
         [
-          name || null,
-          email || null,
+          profileName,
+          profileEmail,
           phoneNumber || null,
           birthDate || null,
           carrier || null,
           gender || null,
-          profileImage || null,
+          profileImageUrl,
           toBit(termsAgreed, 0),
           toBit(privacyAgreed, 0),
           toBit(locationAgreed, 0),
@@ -154,13 +237,13 @@ export const socialLogin = async (req, res) => {
           customerId,
           providerKey,
           providerId,
-          name || '사용자',
-          email || null,
+          profileName || '사용자',
+          profileEmail,
           phoneNumber || null,
           birthDate || null,
           carrier || null,
           gender || null,
-          profileImage || null,
+          profileImageUrl,
           toBit(termsAgreed, 0),
           toBit(privacyAgreed, 0),
           toBit(locationAgreed, 0),
@@ -181,13 +264,13 @@ export const socialLogin = async (req, res) => {
                raw_profile = COALESCE(?, raw_profile),
                updated_at = NOW()
          WHERE id = ?`,
-        [email || null, null, providerLink[0].id]
+        [profileEmail, rawProfile, providerLink[0].id]
       );
     } else {
       await query(
         `INSERT INTO customer_auth_providers (customer_id, provider_type, provider_id, email, raw_profile, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
-        [customerId, providerKey, providerId, email || null, null]
+        [customerId, providerKey, providerId, profileEmail, rawProfile]
       );
 
       // 신규 가입 자동 발급 훅
@@ -215,10 +298,10 @@ export const socialLogin = async (req, res) => {
         providerRefreshToken: providerRefreshToken || null,
         userId: customerId,
         customerId,
-        name: name || existing?.[0]?.name || '사용자',
-        email: email || existing?.[0]?.email || null,
+        name: profileName || existing?.[0]?.name || '사용자',
+        email: profileEmail || existing?.[0]?.email || null,
         phoneNumber: phoneNumber || existing?.[0]?.phone_number || null,
-        profileImage: profileImage || existing?.[0]?.profile_image_url || null,
+        profileImage: profileImageUrl || existing?.[0]?.profile_image_url || null,
         birthDate: birthDate || existing?.[0]?.birth_date || null,
         carrier: carrier || existing?.[0]?.carrier || null,
         gender: gender || existing?.[0]?.gender || null,
@@ -231,6 +314,9 @@ export const socialLogin = async (req, res) => {
     );
   } catch (err) {
     console.error('[socialLogin] error:', err);
+    if (err instanceof ProviderTokenError) {
+      return res.status(err.statusCode).json(error(err.code, err.message));
+    }
     return res.status(500).json(error('INTERNAL_ERROR', '서버 오류가 발생했습니다', { message: err.message }));
   }
 };
@@ -246,8 +332,6 @@ export const signupCustomer = async (req, res) => {
       socialId,
       accessToken,
       socialAccessToken,
-      userId,
-      customerId: customerIdFromBody,
       name,
       email,
       phoneNumber,
@@ -261,90 +345,50 @@ export const signupCustomer = async (req, res) => {
       marketingAgreed,
     } = req.body;
 
-    const accessTokenInput = accessToken || socialAccessToken;
+    const customerId = req.customerId;
+    if (!customerId) {
+      return res.status(401).json(error('AUTH_REQUIRED', '로그인이 필요합니다'));
+    }
 
-    if (!provider || (!socialId && !userId && !customerIdFromBody)) {
+    const providerKey = normalizeProvider(provider || req.customer?.provider);
+    if (!providerKey) {
       return res.status(400).json(
-        error('VALIDATION_ERROR', 'provider와 socialId 또는 userId가 필요합니다', {
-          required: ['provider', 'socialId|userId'],
+        error('VALIDATION_ERROR', 'provider가 필요합니다', {
+          required: ['provider'],
         })
       );
     }
 
-    const providerKey = provider.toLowerCase();
-    const providerId = socialId || null; // 고정 식별자만 사용
-    const toBit = (val, fallback = 0) => {
-      if (val === undefined || val === null) return fallback;
-      return val ? 1 : 0;
-    };
-    let customerId = userId || customerIdFromBody || null;
-    let isNewUser = false;
+    const accessTokenInput = accessToken || socialAccessToken;
+    let providerId = null;
+    let verifiedProfile = null;
 
-    // 식별 우선순위: userId -> provider + providerId
-    if (customerId) {
-      const exists = await query('SELECT id FROM customers WHERE id = ? LIMIT 1', [customerId]);
-      if (!exists || exists.length === 0) {
-        isNewUser = true;
-        customerId = `cust_${uuidv4()}`;
-        await query(
-          `INSERT INTO customers (id, provider_type, provider_id, name, email, phone_number, birth_date, carrier, gender, profile_image_url, terms_agreed, privacy_agreed, location_agreed, marketing_agreed, last_login_at, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())`,
-          [
-            customerId,
-            providerKey,
-            providerId,
-            name || '사용자',
-            email || null,
-            phoneNumber || null,
-            birthDate || null,
-            carrier || null,
-            gender || null,
-            profileImage || null,
-            toBit(termsAgreed, 0),
-            toBit(privacyAgreed, 0),
-            toBit(locationAgreed, 0),
-            toBit(marketingAgreed, 0),
-          ]
+    if (accessTokenInput) {
+      verifiedProfile = await verifySocialAccessToken(providerKey, accessTokenInput);
+      if (socialId && String(socialId) !== verifiedProfile.providerId) {
+        return res.status(401).json(
+          error('PROVIDER_ID_MISMATCH', '요청한 socialId가 provider token의 사용자와 일치하지 않습니다')
         );
       }
-    } else if (providerId) {
-      const existing = await query(
-        'SELECT * FROM customers WHERE provider_type = ? AND provider_id = ? LIMIT 1',
-        [providerKey, providerId]
-      );
-      if (existing && existing.length > 0) {
-        customerId = existing[0].id;
-      } else {
-        isNewUser = true;
-        customerId = `cust_${uuidv4()}`;
-        await query(
-        `INSERT INTO customers (id, provider_type, provider_id, name, email, phone_number, birth_date, carrier, gender, profile_image_url, terms_agreed, privacy_agreed, location_agreed, marketing_agreed, last_login_at, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())`,
-        [
-          customerId,
-          providerKey,
-          providerId,
-          name || '사용자',
-          email || null,
-          phoneNumber || null,
-          birthDate || null,
-          carrier || null,
-          gender || null,
-          profileImage || null,
-          toBit(termsAgreed, 0),
-          toBit(privacyAgreed, 0),
-          toBit(locationAgreed, 0),
-          toBit(marketingAgreed, 0),
-        ]
-      );
-      }
+      providerId = verifiedProfile.providerId;
     }
 
-    if (!customerId) {
-      return res.status(400).json(error('VALIDATION_ERROR', 'customerId를 결정할 수 없습니다'));
+    const existing = await query('SELECT * FROM customers WHERE id = ? LIMIT 1', [customerId]);
+    if (!existing || existing.length === 0) {
+      return res.status(404).json(error('USER_NOT_FOUND', '사용자를 찾을 수 없습니다'));
     }
 
-    // 프로필 업데이트
+    if (providerId && existing[0].provider_id && String(existing[0].provider_id) !== providerId) {
+      return res.status(403).json(
+        error('PROVIDER_ID_MISMATCH', '로그인 사용자와 provider token의 사용자가 일치하지 않습니다')
+      );
+    }
+
+    const profileName = verifiedProfile?.name || name || null;
+    const profileEmail = verifiedProfile?.email || email || null;
+    const profileImageUrl = verifiedProfile?.profileImage || profileImage || null;
+    const rawProfile = verifiedProfile ? JSON.stringify(verifiedProfile.rawProfile) : null;
+
     await query(
       `UPDATE customers
          SET name = COALESCE(?, name),
@@ -361,13 +405,13 @@ export const signupCustomer = async (req, res) => {
              last_login_at = NOW()
        WHERE id = ?`,
       [
-        name || null,
-        email || null,
+        profileName,
+        profileEmail,
         phoneNumber || null,
         birthDate || null,
         carrier || null,
         gender || null,
-        profileImage || null,
+        profileImageUrl,
         toBit(termsAgreed),
         toBit(privacyAgreed, 0),
         toBit(locationAgreed, 0),
@@ -376,7 +420,6 @@ export const signupCustomer = async (req, res) => {
       ]
     );
 
-    // provider 링크 upsert
     if (providerId) {
       const providerLink = await query(
         'SELECT id FROM customer_auth_providers WHERE provider_type = ? AND provider_id = ? LIMIT 1',
@@ -386,20 +429,20 @@ export const signupCustomer = async (req, res) => {
         await query(
           `UPDATE customer_auth_providers
              SET email = COALESCE(?, email),
+                 raw_profile = COALESCE(?, raw_profile),
                  updated_at = NOW()
            WHERE id = ?`,
-          [email || null, providerLink[0].id]
+          [profileEmail, rawProfile, providerLink[0].id]
         );
       } else {
         await query(
           `INSERT INTO customer_auth_providers (customer_id, provider_type, provider_id, email, raw_profile, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, NOW(), NOW())`,
-          [customerId, providerKey, providerId, email || null, null]
+          [customerId, providerKey, providerId, profileEmail, rawProfile]
         );
       }
     }
 
-    // 토큰 재발급 및 refresh 저장
     const access = generateCustomerAccessToken(customerId, providerKey);
     const refresh = generateCustomerRefreshToken(customerId, providerKey);
     await query(
@@ -410,27 +453,30 @@ export const signupCustomer = async (req, res) => {
 
     return res.json(
       success({
-        isNewUser,
+        isNewUser: false,
         accessToken: access,
         refreshToken: refresh,
         userId: customerId,
         customerId,
-        name: name || null,
-        email: email || null,
-        phoneNumber: phoneNumber || null,
-        profileImage: profileImage || null,
-        birthDate: birthDate || null,
-        carrier: carrier || null,
-        gender: gender || null,
-        termsAgreed: toBit(termsAgreed, 0),
-        privacyAgreed: toBit(privacyAgreed, 0),
-        locationAgreed: toBit(locationAgreed, 0),
-        marketingAgreed: toBit(marketingAgreed, 0),
+        name: profileName || existing[0].name || null,
+        email: profileEmail || existing[0].email || null,
+        phoneNumber: phoneNumber || existing[0].phone_number || null,
+        profileImage: profileImageUrl || existing[0].profile_image_url || null,
+        birthDate: birthDate || existing[0].birth_date || null,
+        carrier: carrier || existing[0].carrier || null,
+        gender: gender || existing[0].gender || null,
+        termsAgreed: toBit(termsAgreed, existing[0].terms_agreed ?? 0),
+        privacyAgreed: toBit(privacyAgreed, existing[0].privacy_agreed ?? 0),
+        locationAgreed: toBit(locationAgreed, existing[0].location_agreed ?? 0),
+        marketingAgreed: toBit(marketingAgreed, existing[0].marketing_agreed ?? 0),
         provider: providerKey,
       })
     );
   } catch (err) {
     console.error('[signupCustomer] error:', err);
+    if (err instanceof ProviderTokenError) {
+      return res.status(err.statusCode).json(error(err.code, err.message));
+    }
     return res.status(500).json(error('INTERNAL_ERROR', '서버 오류가 발생했습니다', { message: err.message }));
   }
 };
@@ -690,3 +736,4 @@ export const updateNotificationSettings = async (req, res) => {
     return res.status(500).json(error('INTERNAL_ERROR', '서버 오류가 발생했습니다'));
   }
 };
+

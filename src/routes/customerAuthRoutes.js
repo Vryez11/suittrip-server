@@ -5,7 +5,7 @@ import { authenticateCustomer } from '../middleware/customerAuth.js';
 const router = express.Router();
 
 router.post('/social-login', socialLogin);
-router.post('/signup', signupCustomer);
+router.post('/signup', authenticateCustomer, signupCustomer);
 router.post('/refresh', refreshToken);
 router.post('/logout', logoutCustomer);
 router.delete('/withdraw', authenticateCustomer, withdrawCustomer);
