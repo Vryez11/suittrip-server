@@ -16,11 +16,24 @@ import crypto from 'crypto';
 const ALLOWED_STORAGE_TYPES = ['s', 'm', 'l', 'xl', 'special', 'refrigeration'];
 const PRICE_PER_BAG_PER_DAY = 6000;
 const RESERVATION_TTL_MINUTES = 30;
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
-const toMySQLDateTime = (dateString) => {
-  if (!dateString) return null;
-  const d = new Date(dateString);
-  return d.toISOString().slice(0, 19).replace('T', ' ');
+const parseDate = (value) => {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+};
+
+const toMySQLDateTime = (value) => {
+  const date = parseDate(value);
+  if (!date) return null;
+  const kst = new Date(date.getTime() + KST_OFFSET_MS);
+  return kst.toISOString().slice(0, 19).replace('T', ' ');
+};
+
+const toKSTISOString = (value) => {
+  const mysqlDateTime = toMySQLDateTime(value);
+  return mysqlDateTime ? `${mysqlDateTime.replace(' ', 'T')}+09:00` : null;
 };
 
 const normalizePhone = (phone) => String(phone || '').replace(/[-\s]/g, '');
@@ -162,8 +175,7 @@ export const createGuestReservation = async (req, res) => {
     let calculatedEndTime = endTime;
     if (!calculatedEndTime && startTime && duration) {
       const start = new Date(startTime);
-      start.setHours(start.getHours() + Number(duration));
-      calculatedEndTime = start.toISOString();
+      calculatedEndTime = new Date(start.getTime() + Number(duration) * 60 * 60 * 1000);
     }
 
     // capacity 검증
@@ -228,7 +240,7 @@ export const createGuestReservation = async (req, res) => {
            status, start_time, end_time, request_time, actual_start_time, actual_end_time,
            duration, bag_count, total_amount, message, special_requests, luggage_image_urls,
            payment_status, payment_method, payment_id, qr_code, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
         [
           reservationId,
           canonicalStoreId,
@@ -242,7 +254,6 @@ export const createGuestReservation = async (req, res) => {
           'pending',
           toMySQLDateTime(startTime),
           toMySQLDateTime(calculatedEndTime),
-          toMySQLDateTime(new Date().toISOString()),
           null,
           null,
           duration,
@@ -537,14 +548,14 @@ export const getAvailability = async (req, res) => {
     const canonicalStoreId = resolved.id;
 
     const endDate = new Date(start.getTime() + duration * 3600 * 1000);
-    const endTimeIso = endDate.toISOString();
+    const endTime = toKSTISOString(endDate);
 
     const items = {};
     for (const type of ALLOWED_STORAGE_TYPES) {
       try {
         // bagCount=0으로 호출하면 (currentCount + 0) <= maxCapacity, 항상 available true.
         // 우리는 remaining 만 쓰므로 OK.
-        const cap = await checkCapacity(canonicalStoreId, type, startTime, endTimeIso, 0);
+        const cap = await checkCapacity(canonicalStoreId, type, startTime, endDate, 0);
         items[type] = {
           maxCapacity: cap.maxCapacity,
           currentCount: cap.currentCount,
@@ -559,7 +570,7 @@ export const getAvailability = async (req, res) => {
     // 응답에 originalParam(클라이언트가 보낸 값) + canonical 둘 다 노출은 안 함.
     // canonical UUID 외부 노출 방지 위해 클라이언트가 보낸 storeId 그대로 echo만.
     return res.json(
-      success({ storeId, startTime, endTime: endTimeIso, duration, items }, '가용 수량 조회 완료')
+      success({ storeId, startTime, endTime, duration, items }, '가용 수량 조회 완료')
     );
   } catch (err) {
     console.error('[getAvailability] error:', err);
