@@ -26,6 +26,20 @@ const toMySQLDateTime = (dateString) => {
 const normalizePhone = (phone) => String(phone || '').replace(/[-\s]/g, '');
 
 /**
+ * id OR slug → canonical store id 로 정규화.
+ * UUID/slug 둘 다 받아 동일하게 동작하게 만들어 클라이언트가 UUID를 노출할 필요가 없게 한다.
+ * 매장이 없으면 null 반환.
+ */
+const resolveStoreId = async (idOrSlug) => {
+  if (!idOrSlug) return null;
+  const rows = await query(
+    'SELECT id FROM stores WHERE id = ? OR slug = ? LIMIT 1',
+    [idOrSlug, idOrSlug]
+  );
+  return rows?.[0]?.id || null;
+};
+
+/**
  * URL-safe 액세스 토큰 생성 (16바이트 = 22자 base64url)
  */
 const generateAccessToken = () => {
@@ -133,12 +147,10 @@ export const createGuestReservation = async (req, res) => {
       );
     }
 
-    // 매장 존재 + 활성 여부 확인
-    const [store] = await query(
-      'SELECT id, business_name as name FROM stores WHERE id = ? LIMIT 1',
-      [storeId]
-    );
-    if (!store) {
+    // 매장 존재 확인 + storeId가 slug면 canonical id로 정규화
+    // (Landing이 UUID 대신 slug를 보낼 수 있도록 — 네트워크 탭에서 UUID 노출 차단 목적)
+    const canonicalStoreId = await resolveStoreId(storeId);
+    if (!canonicalStoreId) {
       return res.status(404).json(error('STORE_NOT_FOUND', '매장을 찾을 수 없습니다'));
     }
 
@@ -151,7 +163,7 @@ export const createGuestReservation = async (req, res) => {
     }
 
     // capacity 검증
-    const capacity = await checkCapacity(storeId, effectiveStorageType, startTime, calculatedEndTime, bagCount);
+    const capacity = await checkCapacity(canonicalStoreId, effectiveStorageType, startTime, calculatedEndTime, bagCount);
     if (!capacity.available) {
       return res.status(409).json(
         error('CAPACITY_EXCEEDED', '해당 시간대에 수용 가능한 공간이 부족합니다', {
@@ -215,7 +227,7 @@ export const createGuestReservation = async (req, res) => {
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
         [
           reservationId,
-          storeId,
+          canonicalStoreId,
           customerId,
           customerName,
           cleanedPhone,
@@ -512,6 +524,13 @@ export const getAvailability = async (req, res) => {
     if (!Number.isFinite(start.getTime())) {
       return res.status(400).json(error('VALIDATION_ERROR', 'startTime 포맷이 올바르지 않습니다'));
     }
+
+    // storeId가 slug면 canonical id로 정규화
+    const canonicalStoreId = await resolveStoreId(storeId);
+    if (!canonicalStoreId) {
+      return res.status(404).json(error('STORE_NOT_FOUND', '매장을 찾을 수 없습니다'));
+    }
+
     const endDate = new Date(start.getTime() + duration * 3600 * 1000);
     const endTimeIso = endDate.toISOString();
 
@@ -520,7 +539,7 @@ export const getAvailability = async (req, res) => {
       try {
         // bagCount=0으로 호출하면 (currentCount + 0) <= maxCapacity, 항상 available true.
         // 우리는 remaining 만 쓰므로 OK.
-        const cap = await checkCapacity(storeId, type, startTime, endTimeIso, 0);
+        const cap = await checkCapacity(canonicalStoreId, type, startTime, endTimeIso, 0);
         items[type] = {
           maxCapacity: cap.maxCapacity,
           currentCount: cap.currentCount,
@@ -532,6 +551,8 @@ export const getAvailability = async (req, res) => {
       }
     }
 
+    // 응답에 originalParam(클라이언트가 보낸 값) + canonical 둘 다 노출은 안 함.
+    // canonical UUID 외부 노출 방지 위해 클라이언트가 보낸 storeId 그대로 echo만.
     return res.json(
       success({ storeId, startTime, endTime: endTimeIso, duration, items }, '가용 수량 조회 완료')
     );
