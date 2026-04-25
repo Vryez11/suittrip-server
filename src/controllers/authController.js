@@ -14,6 +14,7 @@ import { query } from '../config/database.js';
 import { hashPassword, comparePassword } from '../utils/password.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/jwt.js';
 import { generateStoreId } from '../utils/generateId.js';
+import { generateUniqueSlug } from '../utils/slugify.js';
 
 /**
  * 이메일 인증 코드 발송
@@ -267,15 +268,23 @@ export const register = async (req, res) => {
     // 4. 점포 ID 생성
     const storeId = generateStoreId();
 
+    // 4-1. 공개 URL용 slug 자동 생성 (UUID 노출 방지).
+    // businessName 기반 ASCII slug + 충돌 시 -2, -3 suffix.
+    // 한글 매장명은 ASCII 변환이 어려우므로 store-<랜덤> fallback.
+    const slug = await generateUniqueSlug(businessName, async (candidate) => {
+      const rows = await query('SELECT 1 FROM stores WHERE slug = ? LIMIT 1', [candidate]);
+      return Array.isArray(rows) && rows.length > 0;
+    });
+
     // 5. 점포 정보 저장
     await query(
       `INSERT INTO stores (
         id, email, password_hash, phone_number, store_phone_number, wants_sms_notification,
-        business_number, business_name, representative_name,
+        business_number, business_name, slug, representative_name,
         address, detail_address, latitude, longitude,
         business_type, description, has_completed_setup,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         storeId,
         email,
@@ -285,6 +294,7 @@ export const register = async (req, res) => {
         Boolean(wantsSmsNotification),
         businessNumber || null,
         businessName,
+        slug,
         representativeName || null,
         address || null,
         detailAddress || null,

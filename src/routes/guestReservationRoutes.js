@@ -10,6 +10,8 @@ import {
   getGuestReservations,
   getGuestReservation,
   cleanupExpiredReservations,
+  cancelGuestReservation,
+  getAvailability,
 } from '../controllers/guestReservationController.js';
 
 const router = express.Router();
@@ -76,6 +78,14 @@ router.post('/', createGuestReservation);
 router.post('/cleanup', cleanupExpiredReservations);
 
 /**
+ * 매장 시간대별 사이즈 가용 수량 조회 (모달 UI 동적 표시용)
+ * GET /api/guest/reservations/availability?storeId=&startTime=&duration=
+ *
+ * 주의: '/:id' 라우트보다 먼저 선언해야 함 (Express 매칭 순서).
+ */
+router.get('/availability', getAvailability);
+
+/**
  * 비회원 예약 목록 조회 (전화번호 기반)
  * GET /api/guest/reservations?phoneNumber=01012345678
  */
@@ -86,5 +96,12 @@ router.get('/', getGuestReservations);
  * GET /api/guest/reservations/:id?token=xxx
  */
 router.get('/:id', getGuestReservation);
+
+/**
+ * 비회원 예약 취소 (본인 휴대폰 번호로 검증)
+ * PUT /api/guest/reservations/:id/cancel
+ * Body: { phoneNumber }
+ */
+router.put('/:id/cancel', cancelGuestReservation);
 
 export default router;
