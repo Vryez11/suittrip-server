@@ -77,6 +77,16 @@ export const listStores = async (req, res) => {
       `SELECT * FROM store_settings WHERE store_id IN (${placeholders})`,
       storeIds
     );
+    // 사회적 증명용 예약 건수 — cancelled / rejected 제외해서 "성사된 예약"만 카운트.
+    // 매장 모달에 "🎫 N건 예약 받음" pill로 노출.
+    const reservationCounts = await query(
+      `SELECT store_id, COUNT(*) AS cnt
+         FROM reservations
+        WHERE store_id IN (${placeholders})
+          AND status NOT IN ('cancelled', 'rejected')
+        GROUP BY store_id`,
+      storeIds
+    );
 
     // 매핑
     const reviewsMap = {};
@@ -95,6 +105,11 @@ export const listStores = async (req, res) => {
       settingsMap[s.store_id] = s;
     });
 
+    const reservationCountMap = {};
+    reservationCounts.forEach((r) => {
+      reservationCountMap[r.store_id] = Number(r.cnt) || 0;
+    });
+
     return res.json(
       success(
         {
@@ -110,6 +125,7 @@ export const listStores = async (req, res) => {
             reviews: camelize(reviewsMap[row.id] || []),
             operatingHours: camelize(hoursMap[row.id] || null),
             settings: camelize(settingsMap[row.id] || null),
+            reservationCount: reservationCountMap[row.id] ?? 0,
           })),
         },
         '스토어 목록 조회 성공'
